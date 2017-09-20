@@ -1,6 +1,7 @@
 package main
 
 import (
+	"github.com/elazarl/goproxy"
 	"log"
 	"net"
 	"sync"
@@ -16,9 +17,9 @@ type Endpoint struct {
 	mutex sync.RWMutex
 }
 
-func (e *Endpoint) handleConnection(conn net.Conn) {
-	reader := bufio.NewReader(conn)
-	defer conn.Close()
+func (e *Endpoint) handleConnection(clientConn net.Conn) {
+	reader := bufio.NewReader(clientConn)
+	defer clientConn.Close()
 
 	req, err := http.ReadRequest(reader)
 	if err != nil {
@@ -27,15 +28,26 @@ func (e *Endpoint) handleConnection(conn net.Conn) {
 	}
 	switch req.Method {
 	case "GET":
+		log.Println("Received GET request")
 		resp, err := client.Do(req)
 		if err != nil {
 			log.Println("Couldn't perform GET request!")
 			//TODO: Handle this error correctly instead of returning an empty response. How do we do that?
 			resp = new(http.Response)
 		}
-		resp.Write(conn)
+		resp.Write(clientConn)
 	case "CONNECT":
-
+		log.Println("Received CONNECT request")
+		servConn, err := net.Dial("tcp", req.URL.Host)
+		if err != nil {
+			log.Println("Can't connect using net.Dial")
+			//TODO: Handle this more gracefully
+			return
+		}
+		//send 200 ok? Why?
+		status, err := bufio.NewReader(servConn).ReadString('\n')
+		//log.Println(status)
+		//TODO: Send requests from clientConn to servConn and send responses in the opposite direction
 	}
 
 }

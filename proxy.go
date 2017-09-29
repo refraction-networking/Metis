@@ -8,52 +8,82 @@ import (
 	"strconv"
 	"bufio"
 	"net/http"
+	"flag"
+	"io"
 )
 
-var client = &http.Client{}
+var goproxyPort = 8181
 
 type Endpoint struct {
 	listener net.Listener
 	mutex sync.RWMutex
 }
 
-func (e *Endpoint) handleConnection(clientConn net.Conn) {
-	reader := bufio.NewReader(clientConn)
+func startGoProxy() {
+	verbose := flag.Bool("v", true, "should every proxy request be logged to stdout")
+	addr := flag.String("addr", ":" + strconv.Itoa(goproxyPort), "proxy listen address")
+	flag.Parse()
+	proxy := goproxy.NewProxyHttpServer()
+	proxy.Verbose = *verbose
+	log.Fatal(http.ListenAndServe(*addr, proxy))
+}
+
+func needsTapdance(req *http.Request) (bool) {
+	return false
+}
+
+func orPanic(err error) {
+	if err != nil {
+		panic(err)
+	}
+}
+
+/*if needsTapdance(req) {
+		log.Println("Request needs tapdance, connecting to Tapdance client")
+		//write request out to Tapdance port
+	} else {
+		log.Println("Request doesn't need Tapdance, passing to goproxy") */
+//write request to connection goproxy is listening on
+/*conn, err := net.Dial("tcp", "localhost:" + strconv.Itoa(goproxyPort))
+if err != nil {
+	log.Println("ERROR: Couldn't connect to goproxy.")
+}
+req.WriteProxy(conn)*/
+
+
+func (e *Endpoint) handleConnection(clientConn net.Conn, id int) {
 	defer clientConn.Close()
 
-	req, err := http.ReadRequest(reader)
-	if err != nil {
-		log.Println("Error parsing HTTP request: ", err)
-		return
-	}
-	switch req.Method {
-	case "GET":
-		log.Println("Received GET request")
-		resp, err := client.Do(req)
-		if err != nil {
-			log.Println("Couldn't perform GET request!")
-			//TODO: Handle this error correctly instead of returning an empty response. How do we do that?
-			resp = new(http.Response)
-		}
-		resp.Write(clientConn)
-	case "CONNECT":
-		log.Println("Received CONNECT request")
-		servConn, err := net.Dial("tcp", req.URL.Host)
-		if err != nil {
-			log.Println("Can't connect using net.Dial")
-			//TODO: Handle this more gracefully
-			return
-		}
-		//send 200 ok? Why?
-		status, err := bufio.NewReader(servConn).ReadString('\n')
-		//log.Println(status)
-		//TODO: Send requests from clientConn to servConn and send responses in the opposite direction
+	clientBuf := bufio.NewReadWriter(bufio.NewReader(clientConn), bufio.NewWriter(clientConn))
+
+	remoteConn, err := net.Dial("tcp", "localhost:" + strconv.Itoa(goproxyPort))
+	orPanic(err)
+	remoteBuf := bufio.NewReadWriter(bufio.NewReader(remoteConn), bufio.NewWriter(remoteConn))
+	//Until an error gets thrown?
+	log.Println("Entering for/while loop...")
+	for {
+		//req, err := http.ReadRequest(clientBuf.Reader)
+		cBuf := make([]byte, 65536)
+		rBuf := make([]byte, 65536)
+		io.CopyBuffer(remoteConn, clientConn, cBuf)
+		orPanic(err)
+		//log.Println(id, ": Request from client is: ", req)
+		//orPanic(req.Write(remoteBuf))
+		orPanic(remoteBuf.Flush())
+		//Get the response
+		//resp, err := http.ReadResponse(remoteBuf.Reader, req)
+		//log.Println(id, ": Response from goproxy is:", resp)
+		io.CopyBuffer(clientConn, remoteConn, rBuf)
+		orPanic(err)
+		//orPanic(resp.Write(clientBuf.Writer))
+		orPanic(clientBuf.Flush())
 	}
 
 }
 
 
 func (e *Endpoint) Listen(port int) error {
+	id := 0
 	var err error
 	portStr := strconv.Itoa(port)
 	e.listener, err = net.Listen("tcp", "127.0.0.1:"+portStr)
@@ -71,7 +101,8 @@ func (e *Endpoint) Listen(port int) error {
 			continue
 		}
 		log.Println("Accepted request, handling messages.")
-		go e.handleConnection(conn)
+		go e.handleConnection(conn, id)
+		id++
 	}
 }
 
@@ -80,7 +111,11 @@ func (e *Endpoint) Listen(port int) error {
 // parses the request
 // print the info.
 func main() {
+	log.Println("Starting goproxy...")
+	go startGoProxy()
+	log.Println("Done.")
 	endpt := new(Endpoint)
+	log.Println("Starting my proxy....")
 	endpt.Listen(8080)
 }
 

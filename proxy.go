@@ -6,7 +6,6 @@ import (
 	"net"
 	"sync"
 	"strconv"
-	"bufio"
 	"net/http"
 	"flag"
 	"io"
@@ -52,32 +51,49 @@ req.WriteProxy(conn)*/
 
 
 func (e *Endpoint) handleConnection(clientConn net.Conn, id int) {
-	defer clientConn.Close()
-
-	clientBuf := bufio.NewReadWriter(bufio.NewReader(clientConn), bufio.NewWriter(clientConn))
-
 	remoteConn, err := net.Dial("tcp", "localhost:" + strconv.Itoa(goproxyPort))
 	orPanic(err)
-	remoteBuf := bufio.NewReadWriter(bufio.NewReader(remoteConn), bufio.NewWriter(remoteConn))
-	//Until an error gets thrown?
-	log.Println("Entering for/while loop...")
-	for {
-		//req, err := http.ReadRequest(clientBuf.Reader)
+	errChan := make(chan error)
+	/*defer func() {
+		clientConn.Close()
+		remoteConn.Close()
+		_ = <-errChan // wait for second goroutine to close
+	}()*/
+
+	forwardFromClientToGoproxy := func() {
 		cBuf := make([]byte, 65536)
-		rBuf := make([]byte, 65536)
-		io.CopyBuffer(remoteConn, clientConn, cBuf)
+		n, err := io.CopyBuffer(remoteConn, clientConn, cBuf)
 		orPanic(err)
-		//log.Println(id, ": Request from client is: ", req)
+		log.Println(id, ": Client request length: - ", n)
+		errChan <- err
+	}
+
+	forwardFromGoproxyToClient := func() {
+		rBuf := make([]byte, 65536)
+		n, err := io.CopyBuffer(clientConn, remoteConn, rBuf)
+		orPanic(err)
+		log.Println(id, ": Remote response length: - ", n)
+		errChan <- err
+	}
+
+	go forwardFromClientToGoproxy()
+	go forwardFromGoproxyToClient()
+	//Until an error gets thrown?
+	//log.Println("Entering for/while loop...")
+	//for {
+		//req, err := http.ReadRequest(clientBuf.Reader)
+
+
+
 		//orPanic(req.Write(remoteBuf))
-		orPanic(remoteBuf.Flush())
+		//orPanic(remoteBuf.Flush())
 		//Get the response
 		//resp, err := http.ReadResponse(remoteBuf.Reader, req)
 		//log.Println(id, ": Response from goproxy is:", resp)
-		io.CopyBuffer(clientConn, remoteConn, rBuf)
-		orPanic(err)
+
 		//orPanic(resp.Write(clientBuf.Writer))
-		orPanic(clientBuf.Flush())
-	}
+		//orPanic(clientBuf.Flush())
+	//}
 
 }
 

@@ -40,3 +40,17 @@ we take that response, encapsulate it back into the tapdance protocol, get it ba
 
 but basically, the only things you'll see a browser produce is a `GET http://site.com/ HTTP/1.1` for HTTP requests, and a `CONNECT site.com:443 HTTP/1.1` for TLS
 https://en.wikipedia.org/wiki/Proxy_server#Implementations_of_proxies
+
+
+# Notes 10/2:
+
+1) If I get a GET request, close clientConn when? While clientConn is open (while it doesn't throw an error), response = http.defaultTransport(request). 
+Forward response to client. 
+2) If I get a CONNECT request, it might be followed by an SSL handshake. Assuming the http parsing logic is right after
+ accept(), stop parsing incoming msgs as HTTP right after you get a CONNECT and send the 200 OK. Switch to byte copying from then on,
+ copy bytes from clientConn to remoteConn which you create using net.Dial.
+3) Close CONNECT clientConn when?
+4) accept() should return a socket sock. 
+5) TODO: replace goproxy with sergey's DualStream function from forward_proxy.
+6) Basically, the code I had at first is what should happen for GET requests. The code I have now should happen for CONNECTs.
+Excpet that I should replace goproxy with DualStream.

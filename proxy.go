@@ -78,23 +78,7 @@ func (e *Endpoint) handleConnection(clientConn net.Conn, id int) {
 
 	go forwardFromClientToGoproxy()
 	go forwardFromGoproxyToClient()
-	//Until an error gets thrown?
-	//log.Println("Entering for/while loop...")
-	//for {
-		//req, err := http.ReadRequest(clientBuf.Reader)
-
-
-
-		//orPanic(req.Write(remoteBuf))
-		//orPanic(remoteBuf.Flush())
-		//Get the response
-		//resp, err := http.ReadResponse(remoteBuf.Reader, req)
-		//log.Println(id, ": Response from goproxy is:", resp)
-
-		//orPanic(resp.Write(clientBuf.Writer))
-		//orPanic(clientBuf.Flush())
-	//}
-
+	<- errChan
 }
 
 

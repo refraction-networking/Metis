@@ -9,6 +9,9 @@ import (
 	"net/http"
 	"flag"
 	"io"
+	"bufio"
+	"errors"
+	"net/url"
 )
 
 var goproxyPort = 8181
@@ -27,7 +30,8 @@ func startGoProxy() {
 	log.Fatal(http.ListenAndServe(*addr, proxy))
 }
 
-func needsTapdance(req *http.Request) (bool) {
+func needsTapdance(url *url.URL) (bool) {
+	//Hash url and check the bloom filter here
 	return false
 }
 
@@ -37,20 +41,30 @@ func orPanic(err error) {
 	}
 }
 
-/*if needsTapdance(req) {
-		log.Println("Request needs tapdance, connecting to Tapdance client")
-		//write request out to Tapdance port
+func parseRequest(conn net.Conn)(string, *url.URL, error){
+	connReader := bufio.Reader(conn)
+	req, err := http.ReadRequest(&connReader)
+	orPanic(err)
+	if req.Method == "GET" || req.Method == "CONNECT" {
+		return req.Method, req.URL, nil
 	} else {
-		log.Println("Request doesn't need Tapdance, passing to goproxy") */
-//write request to connection goproxy is listening on
-/*conn, err := net.Dial("tcp", "localhost:" + strconv.Itoa(goproxyPort))
-if err != nil {
-	log.Println("ERROR: Couldn't connect to goproxy.")
+		err = errors.New("Chrome gave me "+req.Method+" instead of GET or CONNECT")
+		return "", nil, err
+	}
 }
-req.WriteProxy(conn)*/
 
+func getResource(clientConn net.Conn, id int) {
+	reader := bufio.NewReader(clientConn)
+	client := &http.Client{}
+	defer clientConn.Close()
+	req, err := http.ReadRequest(reader)
+	orPanic(err)
+	resp, err := client.Do(req)
+	orPanic(err)
+	resp.Write(clientConn)
+}
 
-func (e *Endpoint) handleConnection(clientConn net.Conn, id int) {
+func connectToResource(clientConn net.Conn, id int) {
 	remoteConn, err := net.Dial("tcp", "localhost:" + strconv.Itoa(goproxyPort))
 	orPanic(err)
 	errChan := make(chan error)
@@ -81,6 +95,25 @@ func (e *Endpoint) handleConnection(clientConn net.Conn, id int) {
 	<- errChan
 }
 
+func (e *Endpoint) handleConnection(clientConn net.Conn, id int) {
+	//Make a copy of clientConn
+	clientConnCopy := new(net.Conn)
+	io.Copy(clientConnCopy, clientConn)
+
+	//Parse the copy (to see if it worked) as HTTP
+	method, url, err := parseRequest(clientConnCopy)
+	orPanic(err)
+	//Check the bloom filter to see where request should be routed
+	routeToTD := needsTapdance(url)
+	if !routeToTD {
+		if method == "GET" {
+			getResource(clientConn, id)
+		} else {
+			connectToResource(clientConn, id)
+		}
+	}
+}
+
 
 func (e *Endpoint) Listen(port int) error {
 	id := 0
@@ -106,10 +139,6 @@ func (e *Endpoint) Listen(port int) error {
 	}
 }
 
-//listen on incoming port
-//accept incoming connection
-// parses the request
-// print the info.
 func main() {
 	log.Println("Starting goproxy...")
 	go startGoProxy()

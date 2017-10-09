@@ -32,7 +32,7 @@ the only things that do that are the tapdance client and tapdance station
 you can think of it like, we provide transport of data between browser and squid
 the browser doesn't know it's talking to tapdance, or what any of this stuff is
 all it cares is: it connects to *something* that talks HTTP proxy
-we encode and decode and trasnport that something, and ultimately it ends up at a squid instance
+we encode and decode and transport that something, and ultimately it ends up at a squid instance
 that squid instance doesn't know what connected to it (or anything about tapdance or decoy routing/refraction networking)
 it just knows it gets a connection, and an HTTP proxy request
 and then it fulfills that request, and sends a response
@@ -44,11 +44,12 @@ https://en.wikipedia.org/wiki/Proxy_server#Implementations_of_proxies
 
 # Notes 10/2:
 
-1) If I get a GET request, close clientConn when? While clientConn is open (while it doesn't throw an error), response = http.defaultTransport(request). 
+1) If I get a GET request, close clientConn when? While clientConn is open (while it doesn't throw an error), 
+response = http.defaultTransport(request). 
 Forward response to client. 
 2) If I get a CONNECT request, it might be followed by an SSL handshake. Assuming the http parsing logic is right after
- accept(), stop parsing incoming msgs as HTTP right after you get a CONNECT and send the 200 OK. Switch to byte copying from then on,
- copy bytes from clientConn to remoteConn which you create using net.Dial.
+ accept(), stop parsing incoming msgs as HTTP right after you get a CONNECT and send the 200 OK. Switch to byte copying
+ from then on, copy bytes from clientConn to remoteConn which you create using net.Dial.
 3) Close CONNECT clientConn when?
 4) accept() should return a socket sock. 
 5) TODO: replace goproxy with sergey's DualStream function from forward_proxy.

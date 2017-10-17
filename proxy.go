@@ -36,43 +36,58 @@ func needsTapdance(url *url.URL) (bool) {
 }
 
 func orPanic(err error) {
-	if err != nil {
+	if err != nil{
 		panic(err)
 	}
 }
 
-func parseRequest(conn net.Conn)(string, *url.URL, error){
-	connReader := bufio.Reader(conn)
-	req, err := http.ReadRequest(&connReader)
+func parseRequest(conn net.Conn)(*http.Request, error){
+	connReader := bufio.NewReader(conn)
+	req, err := http.ReadRequest(connReader)
+	if err == io.EOF {return nil, err}
 	orPanic(err)
 	if req.Method == "GET" || req.Method == "CONNECT" {
-		return req.Method, req.URL, nil
+		return req, nil
 	} else {
 		err = errors.New("Chrome gave me "+req.Method+" instead of GET or CONNECT")
-		return "", nil, err
+		return nil, err
 	}
 }
 
-func getResource(clientConn net.Conn, id int) {
-	reader := bufio.NewReader(clientConn)
-	client := &http.Client{}
+var client = &http.Client{}
+
+func getResource(clientConn net.Conn, req *http.Request, id int) {
+	log.Println(id, ": GETting resource")
 	defer clientConn.Close()
-	req, err := http.ReadRequest(reader)
-	orPanic(err)
+	req.RequestURI = ""
 	resp, err := client.Do(req)
 	orPanic(err)
 	resp.Write(clientConn)
 }
 
-func connectToResource(clientConn net.Conn, id int) {
+func connectToResource(clientConn net.Conn, req *http.Request, id int) {
+	log.Println(id, ": CONNECTing to resource")
 	remoteConn, err := net.Dial("tcp", "localhost:" + strconv.Itoa(goproxyPort))
 	orPanic(err)
+	/*//log.Println(req)
+	log.Println(req.URL)
+	log.Println(req.RequestURI)
+	req.URL, err = url.ParseRequestURI("HTTPS://"+req.RequestURI)
+	orPanic(err)
+	//req.URL, err = url.ParseRequestURI(req.RequestURI)
+	//orPanic(err)
+	req.RequestURI = ""
+	//log.Println(req)
+	resp, err := client.Do(req)
+	orPanic(err)
+	resp.Write(clientConn)*/
+
 	errChan := make(chan error)
-	/*defer func() {
+	defer func() {
+		_ = <-errChan // wait for second goroutine to close
 		clientConn.Close()
 		remoteConn.Close()
-		_ = <-errChan // wait for second goroutine to close
-	}()*/
+	}()
 
 	forwardFromClientToGoproxy := func() {
 		cBuf := make([]byte, 65536)
@@ -96,20 +111,19 @@ func connectToResource(clientConn net.Conn, id int) {
 }
 
 func (e *Endpoint) handleConnection(clientConn net.Conn, id int) {
-	//Make a copy of clientConn
-	clientConnCopy := new(net.Conn)
-	io.Copy(clientConnCopy, clientConn)
-
-	//Parse the copy (to see if it worked) as HTTP
-	method, url, err := parseRequest(clientConnCopy)
+	//Parse the request as HTTP
+	req, err := parseRequest(clientConn)
 	orPanic(err)
+	method := req.Method
+	reqUrl := req.URL
+
 	//Check the bloom filter to see where request should be routed
-	routeToTD := needsTapdance(url)
+	routeToTD := needsTapdance(reqUrl)
 	if !routeToTD {
 		if method == "GET" {
-			getResource(clientConn, id)
+			getResource(clientConn, req, id)
 		} else {
-			connectToResource(clientConn, id)
+			connectToResource(clientConn, req, id)
 		}
 	}
 }

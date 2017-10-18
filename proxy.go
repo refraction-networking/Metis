@@ -59,6 +59,7 @@ var client = &http.Client{}
 func getResource(clientConn net.Conn, req *http.Request, id int) {
 	log.Println(id, ": GETting resource")
 	defer clientConn.Close()
+	//http.Request has a field RequestURI that should be replaced by URL, RequestURI cannot be set for client.Do.
 	req.RequestURI = ""
 	resp, err := client.Do(req)
 	orPanic(err)
@@ -67,20 +68,10 @@ func getResource(clientConn net.Conn, req *http.Request, id int) {
 
 func connectToResource(clientConn net.Conn, req *http.Request, id int) {
 	log.Println(id, ": CONNECTing to resource")
-	remoteConn, err := net.Dial("tcp", "localhost:" + strconv.Itoa(goproxyPort))
+	remoteConn, err := net.Dial("tcp", req.RequestURI)
 	orPanic(err)
-	/*//log.Println(req)
-	log.Println(req.URL)
-	log.Println(req.RequestURI)
-	req.URL, err = url.ParseRequestURI("HTTPS://"+req.RequestURI)
-	orPanic(err)
-	//req.URL, err = url.ParseRequestURI(req.RequestURI)
-	//orPanic(err)
-	req.RequestURI = ""
-	//log.Println(req)
-	resp, err := client.Do(req)
-	orPanic(err)
-	resp.Write(clientConn)*/
+	
+	clientConn.Write([]byte("HTTP/1.1 200 Connection established\r\n\r\n"))
 
 	errChan := make(chan error)
 	defer func() {
@@ -154,9 +145,9 @@ func (e *Endpoint) Listen(port int) error {
 }
 
 func main() {
-	log.Println("Starting goproxy...")
-	go startGoProxy()
-	log.Println("Done.")
+	//log.Println("Starting goproxy...")
+	//go startGoProxy()
+	//log.Println("Done.")
 	endpt := new(Endpoint)
 	log.Println("Starting my proxy....")
 	endpt.Listen(8080)

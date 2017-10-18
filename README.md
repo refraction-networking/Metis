@@ -1,5 +1,9 @@
 # Metis
 
+Thesis statement: It is possible to increase the speed at which a proxy server, whose intention is to circumvent 
+censorship, operates, by routing only those requests that would be censored through the proxy and allowing others to 
+connect directly.
+
 The process should look something like:
 1) Receive a connection and bytes from a local browser (e.g. "GET" or "CONNECT" stuff)
 2) Pass these bytes to some HTTP proxy library parser, that parses them and returns some HTTP request object

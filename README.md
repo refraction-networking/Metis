@@ -59,3 +59,5 @@ Forward response to client.
 5) TODO: replace goproxy with sergey's DualStream function from forward_proxy.
 6) Basically, the code I had at first is what should happen for GET requests. The code I have now should happen for CONNECTs.
 Excpet that I should replace goproxy with DualStream.
+
+tdConn, err := tapdance.Dial("tcp", "censoredsite.com:80")

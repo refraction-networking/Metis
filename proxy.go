@@ -1,6 +1,7 @@
 package main
 
 import (
+	//"github.com/sergeyfrolov/gotapdance/tapdance"
 	"log"
 	"net"
 	"sync"
@@ -36,6 +37,10 @@ func parseRequest(conn net.Conn)(*http.Request, error){
 	return req, nil
 }
 
+/*func connectToTapdance(clientConn net.Conn, req *http.Request, id int) {
+	tdConn, err := tapdance.Dial("tcp", "censoredsite.com:80")
+}*/
+
 var client = &http.Client{}
 
 func doHttpRequest(clientConn net.Conn, req *http.Request, id int) {
@@ -50,7 +55,7 @@ func doHttpRequest(clientConn net.Conn, req *http.Request, id int) {
 
 func connectToResource(clientConn net.Conn, req *http.Request, id int) {
 	log.Println(id, ": CONNECTing to resource")
-	remoteConn, err := net.Dial("tcp", req.RequestURI)
+	remoteConn, err := net.Dial("tcp", req.URL.Host)
 	orPanic(err)
 
 	clientConn.Write([]byte("HTTP/1.1 200 Connection established\r\n\r\n"))
@@ -61,22 +66,22 @@ func connectToResource(clientConn net.Conn, req *http.Request, id int) {
 		clientConn.Close()
 	}()
 
-	forwardFromClientToGoproxy := func() {
+	forwardFromClientToRemote := func() {
 		cBuf := make([]byte, 65536)
 		n, err := io.CopyBuffer(remoteConn, clientConn, cBuf)
 		log.Println(id, ": Client request length: - ", n)
 		errChan <- err
 	}
 
-	forwardFromGoproxyToClient := func() {
+	forwardFromRemoteToClient := func() {
 		rBuf := make([]byte, 65536)
 		n, err := io.CopyBuffer(clientConn, remoteConn, rBuf)
 		log.Println(id, ": Remote response length: - ", n)
 		errChan <- err
 	}
 
-	go forwardFromClientToGoproxy()
-	go forwardFromGoproxyToClient()
+	go forwardFromClientToRemote()
+	go forwardFromRemoteToClient()
 	<- errChan
 }
 
@@ -99,7 +104,9 @@ func (e *Endpoint) handleConnection(clientConn net.Conn, id int) {
 		} else {
 			doHttpRequest(clientConn, req, id)
 		}
-	}
+	} /*else {
+		connectToTapdance(clientConn, req, id)
+	}*/
 }
 
 

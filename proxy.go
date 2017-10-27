@@ -1,7 +1,6 @@
 package main
 
 import (
-	//"github.com/sergeyfrolov/gotapdance/tapdance"
 	"log"
 	"net"
 	"sync"
@@ -10,6 +9,7 @@ import (
 	"io"
 	"bufio"
 	"net/url"
+	"github.com/sergeyfrolov/gotapdance/tapdance"
 )
 
 type Endpoint struct {
@@ -19,7 +19,7 @@ type Endpoint struct {
 
 func needsTapdance(url *url.URL) (bool) {
 	//Hash url and check the bloom filter here
-	return false
+	return true
 }
 
 func orPanic(err error) {
@@ -37,10 +37,6 @@ func parseRequest(conn net.Conn)(*http.Request, error){
 	return req, nil
 }
 
-/*func connectToTapdance(clientConn net.Conn, req *http.Request, id int) {
-	tdConn, err := tapdance.Dial("tcp", "censoredsite.com:80")
-}*/
-
 var client = &http.Client{}
 
 func doHttpRequest(clientConn net.Conn, req *http.Request, id int) {
@@ -53,10 +49,17 @@ func doHttpRequest(clientConn net.Conn, req *http.Request, id int) {
 	resp.Write(clientConn)
 }
 
-func connectToResource(clientConn net.Conn, req *http.Request, id int) {
+func connectToResource(clientConn net.Conn, req *http.Request, id int, routeToTd bool) {
 	log.Println(id, ": CONNECTing to resource")
-	remoteConn, err := net.Dial("tcp", req.URL.Host)
+	var remoteConn net.Conn
+	var err error
+	if(!routeToTd) {
+		remoteConn, err = net.Dial("tcp", req.URL.Host)
+	} else {
+		remoteConn, err = tapdance.Dial("tcp", req.URL.Host+req.URL.Port())
+	}
 	orPanic(err)
+
 
 	clientConn.Write([]byte("HTTP/1.1 200 Connection established\r\n\r\n"))
 
@@ -98,15 +101,11 @@ func (e *Endpoint) handleConnection(clientConn net.Conn, id int) {
 
 	//Check the bloom filter to see where request should be routed
 	routeToTD := needsTapdance(reqUrl)
-	if !routeToTD {
-		if method == "CONNECT" {
-			connectToResource(clientConn, req, id)
-		} else {
-			doHttpRequest(clientConn, req, id)
-		}
-	} /*else {
-		connectToTapdance(clientConn, req, id)
-	}*/
+	if !routeToTD && method== "CONNECT" {
+		doHttpRequest(clientConn, req, id)
+	} else {
+		connectToResource(clientConn, req, id, routeToTD)
+	}
 }
 
 

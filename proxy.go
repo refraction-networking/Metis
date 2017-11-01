@@ -70,7 +70,7 @@ func connectToResource(clientConn net.Conn, req *http.Request, id int, routeToTd
 	var err error
 	//TODO: Why are these parameters different?
 	if(!routeToTd) {
-		remoteConn, err = net.Dial("tcp", req.URL.Host)
+		remoteConn, err = net.Dial("tcp", req.URL.Hostname()+":"+req.URL.Port())
 	} else {
 		remoteConn, err = connectToTapdance(clientConn, req, id)
 	}

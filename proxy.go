@@ -52,14 +52,15 @@ func doHttpRequest(clientConn net.Conn, req *http.Request, id int) {
 func connectToTapdance(clientConn net.Conn, req *http.Request, id int) (net.Conn, error){
 	var port string
 	if req.URL.Port() == "" {
-		port = ":80"
+		port = ":443"
+		log.Println("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAH!")
 	} else {
 		port = req.URL.Port()
+		log.Println("Port was: ", port)
 	}
-	remoteConn, err := tapdance.Dial("tcp", req.URL.Host+port)
+	remoteConn, err := tapdance.Dial("tcp", req.URL.Hostname()+":"+req.URL.Port())
 	orPanic(err)
-	log.Println(req.Header)
-	req.Header.Write(remoteConn)
+	req.Write(remoteConn)
 	return remoteConn, err
 }
 

@@ -49,15 +49,32 @@ func doHttpRequest(clientConn net.Conn, req *http.Request, id int) {
 	resp.Write(clientConn)
 }
 
+func connectToTapdance(clientConn net.Conn, req *http.Request, id int) (net.Conn, error){
+	var port string
+	if req.URL.Port() == "" {
+		port = ":80"
+	} else {
+		port = req.URL.Port()
+	}
+	remoteConn, err := tapdance.Dial("tcp", req.URL.Host+port)
+	orPanic(err)
+	log.Println(req.Header)
+	req.Header.Write(remoteConn)
+	return remoteConn, err
+}
+
 func connectToResource(clientConn net.Conn, req *http.Request, id int, routeToTd bool) {
 	log.Println(id, ": CONNECTing to resource")
 	var remoteConn net.Conn
 	var err error
+	//TODO: Why are these parameters different?
 	if(!routeToTd) {
 		remoteConn, err = net.Dial("tcp", req.URL.Host)
 	} else {
-		remoteConn, err = tapdance.Dial("tcp", req.URL.Host+req.URL.Port())
+		remoteConn, err = connectToTapdance(clientConn, req, id)
 	}
+	log.Println("Port: ", req.URL.Port())
+	log.Println("Host: ", req.URL.Host)
 	orPanic(err)
 
 

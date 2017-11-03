@@ -10,6 +10,7 @@ import (
 	"bufio"
 	"net/url"
 	"github.com/sergeyfrolov/gotapdance/tapdance"
+	"fmt"
 )
 
 type Endpoint struct {
@@ -17,8 +18,8 @@ type Endpoint struct {
 	mutex sync.RWMutex
 }
 
-func needsTapdance(url *url.URL) (bool) {
-	//Hash url and check the bloom filter here
+func isWhitelisted(url *url.URL) (bool) {
+	//Hash url and check the Bloom filter here
 	return true
 }
 
@@ -49,18 +50,11 @@ func doHttpRequest(clientConn net.Conn, req *http.Request, id int) {
 	resp.Write(clientConn)
 }
 
+
 func connectToTapdance(clientConn net.Conn, req *http.Request, id int) (net.Conn, error){
-	var port string
-	if req.URL.Port() == "" {
-		port = ":443"
-		log.Println("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAH!")
-	} else {
-		port = req.URL.Port()
-		log.Println("Port was: ", port)
-	}
+	fmt.Println("req.URL.Hostname():req.URL.Port()", req.URL.Hostname()+":"+req.URL.Port())
 	remoteConn, err := tapdance.Dial("tcp", req.URL.Hostname()+":"+req.URL.Port())
 	orPanic(err)
-	req.Write(remoteConn)
 	return remoteConn, err
 }
 
@@ -68,14 +62,11 @@ func connectToResource(clientConn net.Conn, req *http.Request, id int, routeToTd
 	log.Println(id, ": CONNECTing to resource")
 	var remoteConn net.Conn
 	var err error
-	//TODO: Why are these parameters different?
 	if(!routeToTd) {
 		remoteConn, err = net.Dial("tcp", req.URL.Hostname()+":"+req.URL.Port())
 	} else {
 		remoteConn, err = connectToTapdance(clientConn, req, id)
 	}
-	log.Println("Port: ", req.URL.Port())
-	log.Println("Host: ", req.URL.Host)
 	orPanic(err)
 
 
@@ -118,7 +109,7 @@ func (e *Endpoint) handleConnection(clientConn net.Conn, id int) {
 	reqUrl := req.URL
 
 	//Check the bloom filter to see where request should be routed
-	routeToTD := needsTapdance(reqUrl)
+	routeToTD := isWhitelisted(reqUrl)
 	if !routeToTD && method== "CONNECT" {
 		doHttpRequest(clientConn, req, id)
 	} else {

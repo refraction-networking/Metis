@@ -145,7 +145,7 @@ func (e *Endpoint) Listen(port int) error {
 func main() {
 	log.SetFlags(log.LstdFlags | log.Lmicroseconds)
 	endpt := new(Endpoint)
-	log.Println("Starting my proxy....")
+	log.Println("Starting Metis proxy....")
 	endpt.Listen(8080)
 }
 

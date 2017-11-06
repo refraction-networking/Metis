@@ -3,20 +3,14 @@ package main
 import (
 	"log"
 	"net"
-	"sync"
-	"strconv"
 	"net/http"
 	"io"
 	"bufio"
 	"net/url"
 	"github.com/sergeyfrolov/gotapdance/tapdance"
 	"fmt"
+	"github.com/refraction-networking/Metis/endpoint"
 )
-
-type Endpoint struct {
-	listener net.Listener
-	mutex sync.RWMutex
-}
 
 func isWhitelisted(url *url.URL) (bool) {
 	//Hash url and check the Bloom filter here
@@ -97,7 +91,7 @@ func connectToResource(clientConn net.Conn, req *http.Request, id int, routeToTd
 	<- errChan
 }
 
-func (e *Endpoint) handleConnection(clientConn net.Conn, id int) {
+func handleConnection(clientConn net.Conn, id int) {
 	defer func() {
 		log.Println("Goroutine", id, "is closed.")
 	}()
@@ -117,35 +111,10 @@ func (e *Endpoint) handleConnection(clientConn net.Conn, id int) {
 	}
 }
 
-
-func (e *Endpoint) Listen(port int) error {
-	id := 0
-	var err error
-	portStr := strconv.Itoa(port)
-	e.listener, err = net.Listen("tcp", "127.0.0.1:"+portStr)
-	if err != nil {
-		log.Println("Unable to listen on port", portStr, err)
-		return err
-	}
-	log.Println("Listening on", e.listener.Addr().String())
-	for {
-		log.Println(id, ": Waiting for a connection request to accept.")
-		//Spins until a request comes in
-		conn, err := e.listener.Accept()
-		if err != nil {
-			log.Println("Failed accepting a connection request:", err)
-			continue
-		}
-		log.Println(id, ": Accepted request, handling messages.")
-		go e.handleConnection(conn, id)
-		id++
-	}
-}
-
 func main() {
 	log.SetFlags(log.LstdFlags | log.Lmicroseconds)
-	endpt := new(Endpoint)
+	endpt := new(endpoint.Endpoint)
 	log.Println("Starting Metis proxy....")
-	endpt.Listen(8080)
+	endpt.Listen(8080, handleConnection)
 }
 

@@ -24,10 +24,17 @@ type Website struct {
 }
 
 var client = &http.Client{}
+var blockedDomains []string
 
-func isWhitelisted(url *url.URL) (bool) {
-	//Hash url and check the Bloom filter here
-	return true
+func contains(slice []string, s string) bool {
+	for _, e := range slice {
+		if e == s { return true}
+	}
+	return false
+}
+
+func isBlocked(url *url.URL) (bool) {
+	return contains(blockedDomains, url.Hostname())
 }
 
 func orPanic(err error) {
@@ -56,6 +63,9 @@ func updateBlockedList() {
 		err := dec.Decode(&site)
 		orPanic(err)
 		fmt.Printf("Domain: %v\n", site.Domain)
+		if !contains(blockedDomains,site.Domain) {
+			blockedDomains = append(blockedDomains, site.Domain)
+		}
 	}
 
 	// read closing bracket
@@ -142,11 +152,11 @@ func handleConnection(clientConn net.Conn, id int) {
 	reqUrl := req.URL
 
 	//Check the bloom filter to see where request should be routed
-	routeToTD := isWhitelisted(reqUrl)
-	if !routeToTD && method== "CONNECT" {
+	routeToTransport := isBlocked(reqUrl)
+	if !routeToTransport && method != "CONNECT" {
 		doHttpRequest(clientConn, req, id)
 	} else {
-		connectToResource(clientConn, req, id, routeToTD)
+		connectToResource(clientConn, req, id, routeToTransport)
 	}
 }
 

@@ -58,6 +58,11 @@ Forward response to client.
 4) accept() should return a socket sock. 
 5) TODO: replace goproxy with sergey's DualStream function from forward_proxy.
 6) Basically, the code I had at first is what should happen for GET requests. The code I have now should happen for CONNECTs.
-Excpet that I should replace goproxy with DualStream.
+Except that I should replace goproxy with DualStream.
 
 tdConn, err := tapdance.Dial("tcp", "censoredsite.com:80")
+
+# Notes 11/7
+If a client goes to server.com/GET/getBlocked, server responds with the blocked list. RESTful API. There are libraries 
+for this. Look at Coinbase's API for examples. Basically, each URL returns a requested piece of info. server.com/POST/addBlocked
+should 

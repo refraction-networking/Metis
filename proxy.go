@@ -12,6 +12,8 @@ import (
 	"strconv"
 	"sync"
 	"encoding/json"
+	"bytes"
+	"net/http/httputil"
 )
 
 type Endpoint struct {
@@ -83,13 +85,58 @@ func parseRequest(conn net.Conn)(*http.Request, error){
 	return req, nil
 }
 
+func detectedTampering(id int, resp *http.Response, err error) bool {
+	//TODO: do resets get caught correctly here?
+	//TODO: how to catch TLS certificate errors?
+	netErr, ok := err.(net.Error)
+	if ok {
+		//Timeout, RST?
+		log.Println(id, "Website timed out with network error ", netErr)
+		return true
+	}
+	_, ok = err.(*net.OpError)
+	if ok {
+		//Finds ECONNRESET and EPIPE?
+		log.Println(id, "Website threw net.OpError ", err)
+		return true
+	}
+	if err != nil {
+		log.Println(id, "Website threw unknown error ", err)
+		orPanic(err)
+	} else {
+		//HTTP poisoning: Iran only, code taken from https://github.com/getlantern/detour/blob/master/detect.go
+		byteResp, dmpErr := httputil.DumpResponse(resp, true)
+		orPanic(dmpErr)
+		http403 := []byte("HTTP/1.1 403 Forbidden")
+		iranIFrame := []byte(`<iframe src="http://10.10.34.34`)
+		if bytes.HasPrefix(byteResp, http403) && bytes.Contains(byteResp, iranIFrame) {
+			return true
+		}
+		//TODO: Other tampering detection should go here
+	}
+	return false
+}
+
+func detectedFailedConn(err error) bool {
+	//TODO: What errors will get thrown if a connection is censored? Distinguish them from non-censorship errs.
+	if err == nil {
+		return false
+	}
+	return true
+}
+
 func doHttpRequest(clientConn net.Conn, req *http.Request, id int) {
 	log.Println(id, ": Performing non-CONNECT HTTP request")
 	defer clientConn.Close()
 	//http.Request has a field RequestURI that should be replaced by URL, RequestURI cannot be set for client.Do.
 	req.RequestURI = ""
 	resp, err := client.Do(req)
-	orPanic(err)
+	if detectedTampering(id, resp, err) {
+		//Probably won't work because req has been used up?
+		connectToResource(clientConn, req, id, true)
+		return
+	}
+	//orPanic(err)
 	resp.Write(clientConn)
 }
 
@@ -105,8 +152,11 @@ func connectToResource(clientConn net.Conn, req *http.Request, id int, routeToTd
 	log.Println(id, ": CONNECTing to resource")
 	var remoteConn net.Conn
 	var err error
-	if(!routeToTd) {
+	if !routeToTd {
 		remoteConn, err = net.Dial("tcp", req.URL.Hostname()+":"+req.URL.Port())
+		if detectedFailedConn(err) {
+			remoteConn, err = connectToTapdance(clientConn, req, id)
+		}
 	} else {
 		remoteConn, err = connectToTapdance(clientConn, req, id)
 	}

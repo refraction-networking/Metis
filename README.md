@@ -66,3 +66,17 @@ tdConn, err := tapdance.Dial("tcp", "censoredsite.com:80")
 If a client goes to server.com/GET/getBlocked, server responds with the blocked list. RESTful API. There are libraries 
 for this. Look at Coinbase's API for examples. Basically, each URL returns a requested piece of info. server.com/POST/addBlocked
 should 
+
+# Notes 11/8
+
+Iran's censorship: a Lantern contributor says they determine a site to be blocked if:
+1) remote address resolves to 10.10.34.34
+2) response is 403 with an iframe to 10.10.34.34
+3) it times out
+4) EPIPE or ECONNRESET
+
+Detecting DNS poisoning works as follows:
+1) Do the DNS resolution and get a lie
+2) Connect to it over TCP (because you don't know it's a lie yet) 
+3) it either doesn't respond (timeout), responds with a RST, or tries to inject a page. 
+If it's TLS, it won't be able to inject a page, and its certificate won't match.

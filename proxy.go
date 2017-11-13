@@ -14,6 +14,7 @@ import (
 	"encoding/json"
 	"bytes"
 	"net/http/httputil"
+	"os"
 )
 
 type Endpoint struct {
@@ -26,7 +27,20 @@ type Website struct {
 }
 
 var client = &http.Client{}
+
+/*
+Domains Metis is reasonably certain are censored are stored here.
+ */
 var blockedDomains []string
+
+/*
+Domains that Metis has trouble accessing for reasons that might not be censorship are stored here.
+ */
+var tempBlockedDomains []string
+
+var detouredDomains []string
+var directDomains []string
+var failedDomains []string
 
 func contains(slice []string, s string) bool {
 	for _, e := range slice {
@@ -36,7 +50,16 @@ func contains(slice []string, s string) bool {
 }
 
 func isBlocked(url *url.URL) (bool) {
-	return contains(blockedDomains, url.Hostname())
+	return contains(blockedDomains, url.Hostname()) || contains(tempBlockedDomains, url.Hostname())
+}
+
+func remove(s []string, e string) []string {
+	for i, ele := range s {
+		if ele==e {
+			s = append(s[:i], s[i+1:]...)
+		}
+	}
+	return s
 }
 
 func orPanic(err error) {
@@ -92,16 +115,19 @@ func detectedTampering(id int, resp *http.Response, err error) bool {
 	if ok {
 		//Timeout, RST?
 		log.Println(id, "Website timed out with network error ", netErr)
+		blockedDomains = append(blockedDomains, resp.Request.URL.Hostname())
 		return true
 	}
 	_, ok = err.(*net.OpError)
 	if ok {
 		//Finds ECONNRESET and EPIPE?
 		log.Println(id, "Website threw net.OpError ", err)
+		blockedDomains = append(blockedDomains, resp.Request.URL.Hostname())
 		return true
 	}
 	if err != nil {
 		log.Println(id, "Website threw unknown error ", err)
+		//Don't add to blockedDomains because error waqsn't due to censorship?
 		orPanic(err)
 	} else {
 		//HTTP poisoning: Iran only, code taken from https://github.com/getlantern/detour/blob/master/detect.go
@@ -110,6 +136,7 @@ func detectedTampering(id int, resp *http.Response, err error) bool {
 		http403 := []byte("HTTP/1.1 403 Forbidden")
 		iranIFrame := []byte(`<iframe src="http://10.10.34.34`)
 		if bytes.HasPrefix(byteResp, http403) && bytes.Contains(byteResp, iranIFrame) {
+			blockedDomains = append(blockedDomains, resp.Request.URL.Hostname())
 			return true
 		}
 		//TODO: Other tampering detection should go here
@@ -119,6 +146,7 @@ func detectedTampering(id int, resp *http.Response, err error) bool {
 
 func detectedFailedConn(err error) bool {
 	//TODO: What errors will get thrown if a connection is censored? Distinguish them from non-censorship errs.
+	//TODO: Should putting things in blocked lists go here?
 	if err == nil {
 		return false
 	}
@@ -132,11 +160,11 @@ func doHttpRequest(clientConn net.Conn, req *http.Request, id int) {
 	req.RequestURI = ""
 	resp, err := client.Do(req)
 	if detectedTampering(id, resp, err) {
-		//Probably won't work because req has been used up?
 		connectToResource(clientConn, req, id, true)
 		return
 	}
 	//orPanic(err)
+	logDomains("direct", req.URL.Hostname())
 	resp.Write(clientConn)
 }
 
@@ -155,9 +183,26 @@ func connectToResource(clientConn net.Conn, req *http.Request, id int, routeToTd
 	if !routeToTd {
 		remoteConn, err = net.Dial("tcp", req.URL.Hostname()+":"+req.URL.Port())
 		if detectedFailedConn(err) {
+			tempBlockedDomains = append(tempBlockedDomains, req.URL.Hostname())
 			remoteConn, err = connectToTapdance(clientConn, req, id)
+			if err != nil {
+				tempBlockedDomains = remove(tempBlockedDomains, req.URL.Hostname())
+				log.Println(id, ": Cannot connect to ", req.URL.Hostname(), ": ", err)
+				logDomains("failed", req.URL.Hostname())
+				/*TODO: Figure out what errors get thrown here by arbitrarily panicking,
+				  and translate them into HTTP responses to write back to the client.
+				*/
+				orPanic(err)
+				//clientConn.Write([]byte(""))
+				//return
+			} else {
+				logDomains("detour", req.URL.Hostname())
+			}
+		} else {
+			logDomains("direct", req.URL.Hostname())
 		}
 	} else {
+		logDomains("detour", req.URL.Hostname())
 		remoteConn, err = connectToTapdance(clientConn, req, id)
 	}
 	orPanic(err)
@@ -238,9 +283,20 @@ func (e *Endpoint) Listen(port int, handler func(net.Conn, int)) error {
 	}
 }
 
+func logDomains(logFile string, d string) {
+	domainLog, err := os.OpenFile("log/"+logFile+".txt",os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0666)
+	orPanic(err)
+	defer domainLog.Close()
+	n, err := domainLog.WriteString(d+"\r\n")
+	log.Println(n, "bytes written to log/"+logFile+".txt. Error: ", err)
+	domainLog.Sync()
+}
 
 func main() {
 	log.SetFlags(log.LstdFlags | log.Lmicroseconds)
+	os.Create("log/detour.txt")
+	os.Create("log/direct.txt")
+	os.Create("log/failed.txt")
 	endpt := new(Endpoint)
 	log.Println("Starting Metis proxy....")
 	updateBlockedList()

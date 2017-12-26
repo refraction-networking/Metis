@@ -108,26 +108,26 @@ func parseRequest(conn net.Conn)(*http.Request, error){
 	return req, nil
 }
 
-func detectedTampering(id int, resp *http.Response, err error) bool {
+func detectedTampering(id int, req *http.Request, resp *http.Response, err error) bool {
 	//TODO: do resets get caught correctly here?
 	//TODO: how to catch TLS certificate errors?
 	netErr, ok := err.(net.Error)
 	if ok {
 		//Timeout, RST?
 		log.Println(id, "Website timed out with network error ", netErr)
-		blockedDomains = append(blockedDomains, resp.Request.URL.Hostname())
+		blockedDomains = append(blockedDomains, req.URL.Hostname())
 		return true
 	}
 	_, ok = err.(*net.OpError)
 	if ok {
 		//Finds ECONNRESET and EPIPE?
 		log.Println(id, "Website threw net.OpError ", err)
-		blockedDomains = append(blockedDomains, resp.Request.URL.Hostname())
+		blockedDomains = append(blockedDomains, req.URL.Hostname())
 		return true
 	}
 	if err != nil {
 		log.Println(id, "Website threw unknown error ", err)
-		//Don't add to blockedDomains because error waqsn't due to censorship?
+		//Don't add to blockedDomains because error wasn't due to censorship?
 		orPanic(err)
 	} else {
 		//HTTP poisoning: Iran only, code taken from https://github.com/getlantern/detour/blob/master/detect.go
@@ -136,7 +136,7 @@ func detectedTampering(id int, resp *http.Response, err error) bool {
 		http403 := []byte("HTTP/1.1 403 Forbidden")
 		iranIFrame := []byte(`<iframe src="http://10.10.34.34`)
 		if bytes.HasPrefix(byteResp, http403) && bytes.Contains(byteResp, iranIFrame) {
-			blockedDomains = append(blockedDomains, resp.Request.URL.Hostname())
+			blockedDomains = append(blockedDomains, req.URL.Hostname())
 			return true
 		}
 		//TODO: Other tampering detection should go here
@@ -159,7 +159,7 @@ func doHttpRequest(clientConn net.Conn, req *http.Request, id int) {
 	//http.Request has a field RequestURI that should be replaced by URL, RequestURI cannot be set for client.Do.
 	req.RequestURI = ""
 	resp, err := client.Do(req)
-	if detectedTampering(id, resp, err) {
+	if detectedTampering(id, req, resp, err) {
 		connectToResource(clientConn, req, id, true)
 		return
 	}

@@ -175,6 +175,22 @@ func connectToTapdance(clientConn net.Conn, req *http.Request, id int) (net.Conn
 	return remoteConn, err
 }
 
+func transmitError(clientConn net.Conn, err error){
+	_, ok := err.(net.Error)
+	if ok {
+		//Timeout, RST?
+		clientConn.Write([]byte("HTTP/1.1 504 Gateway Timeout\r\n\r\n"))
+	}
+	_, ok = err.(*net.OpError)
+	if ok {
+		//Finds ECONNRESET and EPIPE?
+		clientConn.Write([]byte("HTTP/1.1 504 Gateway Timeout\r\n\r\n"))
+	}
+	if err != nil {
+		orPanic(err)
+	}
+}
+
 func connectToResource(clientConn net.Conn, req *http.Request, id int, routeToTd bool) {
 	log.Println(id, ": CONNECTing to resource")
 	var remoteConn net.Conn
@@ -188,12 +204,9 @@ func connectToResource(clientConn net.Conn, req *http.Request, id int, routeToTd
 				tempBlockedDomains = remove(tempBlockedDomains, req.URL.Hostname())
 				log.Println(id, ": Cannot connect to ", req.URL.Hostname(), ": ", err)
 				logDomains("failed", req.URL.Hostname())
-				/*TODO: Figure out what errors get thrown here by arbitrarily panicking,
-				  and translate them into HTTP responses to write back to the client.
-				*/
-				orPanic(err)
-				//clientConn.Write([]byte(""))
-				//return
+				//TODO: Check this error handling.
+				transmitError(clientConn, err)
+				return
 			} else {
 				logDomains("detour", req.URL.Hostname())
 			}
@@ -203,8 +216,20 @@ func connectToResource(clientConn net.Conn, req *http.Request, id int, routeToTd
 	} else {
 		logDomains("detour", req.URL.Hostname())
 		remoteConn, err = connectToTapdance(clientConn, req, id)
+		if err != nil {
+			//Try again
+			//TODO: Should I be retrying to connect here like this?
+			remoteConn, err = connectToTapdance(clientConn, req, id)
+		}
+		if err != nil {
+			//Request probably isn't going through, it failed twice.
+			tempBlockedDomains = remove(tempBlockedDomains, req.URL.Hostname())
+			log.Println(id, ": Cannot connect to Tapdance after two tries: ", err)
+			logDomains("failed", req.URL.Hostname())
+			transmitError(clientConn, err)
+			return
+		}
 	}
-	orPanic(err)
 
 
 	clientConn.Write([]byte("HTTP/1.1 200 Connection established\r\n\r\n"))

@@ -172,7 +172,6 @@ func doHttpRequest(clientConn net.Conn, req *http.Request, id int) {
 func connectToTapdance(clientConn net.Conn, req *http.Request, id int) (net.Conn, error){
 	fmt.Println("req.URL.Hostname():req.URL.Port()", req.URL.Hostname()+":"+req.URL.Port())
 	remoteConn, err := tapdance.Dial("tcp", req.URL.Hostname()+":"+req.URL.Port())
-	orPanic(err)
 	return remoteConn, err
 }
 

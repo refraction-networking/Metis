@@ -180,11 +180,13 @@ func transmitError(clientConn net.Conn, err error){
 	if ok {
 		//Timeout, RST?
 		clientConn.Write([]byte("HTTP/1.1 504 Gateway Timeout\r\n\r\n"))
+		return
 	}
 	_, ok = err.(*net.OpError)
 	if ok {
 		//Finds ECONNRESET and EPIPE?
 		clientConn.Write([]byte("HTTP/1.1 504 Gateway Timeout\r\n\r\n"))
+		return
 	}
 	if err != nil {
 		orPanic(err)

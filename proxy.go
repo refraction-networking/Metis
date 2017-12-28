@@ -176,6 +176,7 @@ func connectToTapdance(clientConn net.Conn, req *http.Request, id int) (net.Conn
 }
 
 func transmitError(clientConn net.Conn, err error){
+	defer clientConn.Close()
 	_, ok := err.(net.Error)
 	if ok {
 		//Timeout, RST?
@@ -203,6 +204,7 @@ func connectToResource(clientConn net.Conn, req *http.Request, id int, routeToTd
 			tempBlockedDomains = append(tempBlockedDomains, req.URL.Hostname())
 			remoteConn, err = connectToTapdance(clientConn, req, id)
 			if err != nil {
+				log.Println("***************** connectToTapdance returned an error (1) *******************")
 				tempBlockedDomains = remove(tempBlockedDomains, req.URL.Hostname())
 				log.Println(id, ": Cannot connect to ", req.URL.Hostname(), ": ", err)
 				logDomains("failed", req.URL.Hostname())
@@ -221,11 +223,13 @@ func connectToResource(clientConn net.Conn, req *http.Request, id int, routeToTd
 		if err != nil {
 			//Try again
 			//TODO: Should I be retrying to connect here like this?
+			log.Println("***************** connectToTapdance returned an error (2) *******************")
 			remoteConn, err = connectToTapdance(clientConn, req, id)
 		}
 		if err != nil {
 			//Request probably isn't going through, it failed twice.
 			tempBlockedDomains = remove(tempBlockedDomains, req.URL.Hostname())
+			log.Println("***************** connectToTapdance returned an error (3) *******************")
 			log.Println(id, ": Cannot connect to Tapdance after two tries: ", err)
 			logDomains("failed", req.URL.Hostname())
 			transmitError(clientConn, err)

@@ -154,7 +154,7 @@ func detectedFailedConn(err error) bool {
 }
 
 func doHttpRequest(clientConn net.Conn, req *http.Request, id int) {
-	log.Println(id, ": Performing non-CONNECT HTTP request")
+	log.Println(id, ": Performing non-CONNECT HTTP request to ", req.Host)
 	defer clientConn.Close()
 	//http.Request has a field RequestURI that should be replaced by URL, RequestURI cannot be set for client.Do.
 	req.RequestURI = ""
@@ -164,7 +164,7 @@ func doHttpRequest(clientConn net.Conn, req *http.Request, id int) {
 		return
 	}
 	//orPanic(err)
-	logDomains("direct", req.URL.Hostname())
+	logDomains("direct", req.URL.Hostname(), id)
 	resp.Write(clientConn)
 }
 
@@ -195,7 +195,7 @@ func transmitError(clientConn net.Conn, err error){
 }
 
 func connectToResource(clientConn net.Conn, req *http.Request, id int, routeToTd bool) {
-	log.Println(id, ": CONNECTing to resource")
+	log.Println(id, ": CONNECTing to resource ", req.Host)
 	var remoteConn net.Conn
 	var err error
 	if !routeToTd {
@@ -207,18 +207,18 @@ func connectToResource(clientConn net.Conn, req *http.Request, id int, routeToTd
 				log.Println("***************** connectToTapdance returned an error (1) *******************")
 				tempBlockedDomains = remove(tempBlockedDomains, req.URL.Hostname())
 				log.Println(id, ": Cannot connect to ", req.URL.Hostname(), ": ", err)
-				logDomains("failed", req.URL.Hostname())
+				logDomains("failed", req.URL.Hostname(), id)
 				//TODO: Check this error handling.
 				transmitError(clientConn, err)
 				return
 			} else {
-				logDomains("detour", req.URL.Hostname())
+				logDomains("detour", req.URL.Hostname(), id)
 			}
 		} else {
-			logDomains("direct", req.URL.Hostname())
+			logDomains("direct", req.URL.Hostname(), id)
 		}
 	} else {
-		logDomains("detour", req.URL.Hostname())
+		logDomains("detour", req.URL.Hostname(), id)
 		remoteConn, err = connectToTapdance(clientConn, req, id)
 		if err != nil {
 			//Try again
@@ -231,7 +231,7 @@ func connectToResource(clientConn net.Conn, req *http.Request, id int, routeToTd
 			tempBlockedDomains = remove(tempBlockedDomains, req.URL.Hostname())
 			log.Println("***************** connectToTapdance returned an error (3) *******************")
 			log.Println(id, ": Cannot connect to Tapdance after two tries: ", err)
-			logDomains("failed", req.URL.Hostname())
+			logDomains("failed", req.URL.Hostname(), id)
 			transmitError(clientConn, err)
 			return
 		}
@@ -265,18 +265,24 @@ func connectToResource(clientConn net.Conn, req *http.Request, id int, routeToTd
 	<- errChan
 }
 
+//Assumes clientConn is not nil. TODO: check assumption
 func handleConnection(clientConn net.Conn, id int) {
 	defer func() {
 		log.Println("Goroutine", id, "is closed.")
+		clientConn.Close()
 	}()
 	//Parse the request as HTTP
 	req, err := parseRequest(clientConn)
 	if err == io.EOF { return }
-	orPanic(err)
+	if err != nil {
+		log.Println ("Error parsing HTTP request: ", err)
+		clientConn.Write([]byte("HTTP/1.1 400 Bad request\r\n\r\n"))
+		return
+	}
 	method := req.Method
 	reqUrl := req.URL
 
-	//Check the bloom filter to see where request should be routed
+	//Check to see where request should be routed
 	routeToTransport := isBlocked(reqUrl)
 	if !routeToTransport && method != "CONNECT" {
 		doHttpRequest(clientConn, req, id)
@@ -313,12 +319,12 @@ func (e *Endpoint) Listen(port int, handler func(net.Conn, int)) error {
 	}
 }
 
-func logDomains(logFile string, d string) {
+func logDomains(logFile string, d string, id int) {
 	domainLog, err := os.OpenFile("log/"+logFile+".txt",os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0666)
 	orPanic(err)
 	defer domainLog.Close()
 	n, err := domainLog.WriteString(d+"\r\n")
-	log.Println(n, "bytes written to log/"+logFile+".txt. Error: ", err)
+	log.Println(id, ": ", n, "bytes written to log/"+logFile+".txt. Error: ", err)
 	domainLog.Sync()
 }
 

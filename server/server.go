@@ -44,7 +44,8 @@ func main(){
 	router := mux.NewRouter()
 	router.HandleFunc("/blocked", getBlocked).Methods("GET")
 	router.HandleFunc("/blocked/add", addBlocked).Methods("POST")
-	blockedList = append(blockedList, Website{Domain: "www.facebook.com"})
-	blockedList = append(blockedList, Website{Domain: "www.google.com"})
+	blockedList = append(blockedList, Website{Domain: "facebook.com"})
+	blockedList = append(blockedList, Website{Domain: "google.com"})
+	blockedList = append(blockedList, Website{Domain: "bettermotherfuckingwebsite.com"})
 	log.Fatal(http.ListenAndServe(":9090", router))
 }

@@ -170,8 +170,15 @@ func doHttpRequest(clientConn net.Conn, req *http.Request, id int) {
 
 
 func connectToTapdance(clientConn net.Conn, req *http.Request, id int) (net.Conn, error){
-	fmt.Println("req.URL.Hostname():req.URL.Port()", req.URL.Hostname()+":"+req.URL.Port())
-	remoteConn, err := tapdance.Dial("tcp", req.URL.Hostname()+":"+req.URL.Port())
+	port := req.URL.Port()
+	host := req.URL.Hostname()
+	if port == "" && req.TLS == nil {
+		port = "80"
+	} else if port == "" {
+		port = "443"
+	}
+	fmt.Println("req.URL.Hostname():req.URL.Port() after port check: ", host+":"+port)
+	remoteConn, err := tapdance.Dial("tcp", host+":"+port)
 	return remoteConn, err
 }
 

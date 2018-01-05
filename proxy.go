@@ -186,17 +186,16 @@ func transmitError(clientConn net.Conn, err error){
 	defer clientConn.Close()
 	_, ok := err.(net.Error)
 	if ok {
-		//Timeout, RST?
 		clientConn.Write([]byte("HTTP/1.1 504 Gateway Timeout\r\n\r\n"))
 		return
 	}
 	_, ok = err.(*net.OpError)
 	if ok {
-		//Finds ECONNRESET and EPIPE?
 		clientConn.Write([]byte("HTTP/1.1 504 Gateway Timeout\r\n\r\n"))
 		return
 	}
 	if err != nil {
+		//TODO: Tapdance sometimes responds with HTTP errors (503 Service Unavailable), how do I make sure an error is an HTTP response?
 		orPanic(err)
 	}
 }
@@ -211,7 +210,6 @@ func connectToResource(clientConn net.Conn, req *http.Request, id int, routeToTd
 			tempBlockedDomains = append(tempBlockedDomains, req.URL.Hostname())
 			remoteConn, err = connectToTapdance(clientConn, req, id)
 			if err != nil {
-				log.Println("***************** connectToTapdance returned an error (1) *******************")
 				tempBlockedDomains = remove(tempBlockedDomains, req.URL.Hostname())
 				log.Println(id, ": Cannot connect to ", req.URL.Hostname(), ": ", err)
 				logDomains("failed", req.URL.Hostname(), id)
@@ -230,13 +228,11 @@ func connectToResource(clientConn net.Conn, req *http.Request, id int, routeToTd
 		if err != nil {
 			//Try again
 			//TODO: Should I be retrying to connect here like this?
-			log.Println("***************** connectToTapdance returned an error (2) *******************")
 			remoteConn, err = connectToTapdance(clientConn, req, id)
 		}
 		if err != nil {
 			//Request probably isn't going through, it failed twice.
 			tempBlockedDomains = remove(tempBlockedDomains, req.URL.Hostname())
-			log.Println("***************** connectToTapdance returned an error (3) *******************")
 			log.Println(id, ": Cannot connect to Tapdance after two tries: ", err)
 			logDomains("failed", req.URL.Hostname(), id)
 			transmitError(clientConn, err)
@@ -244,6 +240,20 @@ func connectToResource(clientConn net.Conn, req *http.Request, id int, routeToTd
 		}
 	}
 
+	if req.Method != "CONNECT" {
+		fmt.Println("&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&")
+		requestDump, err := httputil.DumpRequest(req, req.Body != nil)
+		if err != nil {
+			fmt.Println(err)
+		}
+		remoteConn.Write(requestDump)
+		rBuf := make([]byte, 65536)
+		_, err = io.CopyBuffer(clientConn, remoteConn, rBuf)
+		if err != nil {
+			log.Println("Error transmiting response from HTTP request through Tapdance to client: ", err)
+		}
+		return
+	}
 
 	clientConn.Write([]byte("HTTP/1.1 200 Connection established\r\n\r\n"))
 

@@ -15,6 +15,7 @@ import (
 	"bytes"
 	"net/http/httputil"
 	"os"
+	"math/rand"
 )
 
 type Endpoint struct {
@@ -50,7 +51,12 @@ func contains(slice []string, s string) bool {
 }
 
 func isBlocked(url *url.URL) (bool) {
-	return contains(blockedDomains, url.Hostname()) || contains(tempBlockedDomains, url.Hostname())
+	random := rand.Intn(2)
+	if random%2 == 0 {
+		return contains(blockedDomains, url.Hostname()) || contains(tempBlockedDomains, url.Hostname())
+	} else {
+		return true
+	}
 }
 
 func remove(s []string, e string) []string {
@@ -196,7 +202,7 @@ func transmitError(clientConn net.Conn, err error){
 	}
 	if err != nil {
 		//TODO: Tapdance sometimes responds with HTTP errors (503 Service Unavailable), how do I make sure an error is an HTTP response?
-		orPanic(err)
+		clientConn.Write([]byte(err.Error()))
 	}
 }
 

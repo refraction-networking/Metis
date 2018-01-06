@@ -80,3 +80,17 @@ Detecting DNS poisoning works as follows:
 2) Connect to it over TCP (because you don't know it's a lie yet) 
 3) it either doesn't respond (timeout), responds with a RST, or tries to inject a page. 
 If it's TLS, it won't be able to inject a page, and its certificate won't match.
+
+# Notes 1/6
+
+Server returned message printed "Bad request: your browser sent a request this server couldn't understand."
+Stack trace:
+req.URL.Hostname():req.URL.Port() after port check:  en.cppreference.com:80
+[15:25:51] [Session 415, Flow 0] Connected to decoy tapdance1.freeaeskey.xyz (192.122.190.104:443)
+[15:25:51] [Session 415, Flow 0] Attempting to connect to TapDance Station with connection ID: d4cca3edacc594af48c18c5914e2c79e, method: HTTP GET Incomplete
+[15:25:51] [Session 415, Flow 0] Successfully connected to TapDance Station
+&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&
+[15:25:51] [Session 403, Flow 3] scheduling reconnect
+[15:25:51] [Session 403, Flow 3] sending transition:  decoy_list_generation:100500 state_transition:C2S_EXPECT_RECONNECT upload_sync:0 padding:"#################################################################################################################################################################################################################################################################################################################################################################################################################################################################################################################" 
+[15:25:51] [Session 415, Flow 0] reconnecting
+[15:25:51] [Session 415, Flow 0] reconnect: FIN is unexpected

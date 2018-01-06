@@ -183,7 +183,7 @@ func connectToTapdance(clientConn net.Conn, req *http.Request, id int) (net.Conn
 	} else if port == "" {
 		port = "443"
 	}
-	fmt.Println("req.URL.Hostname():req.URL.Port() after port check: ", host+":"+port)
+	fmt.Println(id,": req.URL.Hostname():req.URL.Port() after port check: ", host+":"+port)
 	remoteConn, err := tapdance.Dial("tcp", host+":"+port)
 	return remoteConn, err
 }
@@ -247,8 +247,12 @@ func connectToResource(clientConn net.Conn, req *http.Request, id int, routeToTd
 	}
 
 	if req.Method != "CONNECT" {
-		fmt.Println("&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&")
-		requestDump, err := httputil.DumpRequest(req, req.Body != nil)
+		//Re-add host header since it gets removed
+		/*var host []string
+		host = append(host, req.Host)
+		req.Header["Host"] = host*/
+		requestDump, err := httputil.DumpRequestOut(req, req.Body != nil)
+		fmt.Println(requestDump)
 		if err != nil {
 			fmt.Println(err)
 		}

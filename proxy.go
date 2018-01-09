@@ -16,6 +16,7 @@ import (
 	"net/http/httputil"
 	"os"
 	"math/rand"
+	"os/exec"
 )
 
 type Endpoint struct {
@@ -161,7 +162,7 @@ func detectedFailedConn(err error) bool {
 
 func doHttpRequest(clientConn net.Conn, req *http.Request, id int) {
 	log.Println(id, ": Performing non-CONNECT HTTP request to ", req.Host)
-	defer clientConn.Close()
+	//defer clientConn.Close()
 	//http.Request has a field RequestURI that should be replaced by URL, RequestURI cannot be set for client.Do.
 	req.RequestURI = ""
 	resp, err := client.Do(req)
@@ -210,12 +211,14 @@ func connectToResource(clientConn net.Conn, req *http.Request, id int, routeToTd
 	log.Println(id, ": CONNECTing to resource ", req.Host)
 	var remoteConn net.Conn
 	var err error
+
 	if !routeToTd {
 		remoteConn, err = net.Dial("tcp", req.URL.Hostname()+":"+req.URL.Port())
 		if detectedFailedConn(err) {
 			tempBlockedDomains = append(tempBlockedDomains, req.URL.Hostname())
 			remoteConn, err = connectToTapdance(clientConn, req, id)
 			if err != nil {
+				orPanic(err)
 				tempBlockedDomains = remove(tempBlockedDomains, req.URL.Hostname())
 				log.Println(id, ": Cannot connect to ", req.URL.Hostname(), ": ", err)
 				logDomains("failed", req.URL.Hostname(), id)
@@ -246,6 +249,11 @@ func connectToResource(clientConn net.Conn, req *http.Request, id int, routeToTd
 		}
 	}
 
+	defer func() {
+		remoteConn.Close()
+		//clientConn.Close()
+	}()
+
 	if req.Method != "CONNECT" {
 		//Re-add host header since it gets removed
 		/*var host []string
@@ -268,10 +276,6 @@ func connectToResource(clientConn net.Conn, req *http.Request, id int, routeToTd
 	clientConn.Write([]byte("HTTP/1.1 200 Connection established\r\n\r\n"))
 
 	errChan := make(chan error)
-	defer func() {
-		remoteConn.Close()
-		clientConn.Close()
-	}()
 
 	forwardFromClientToRemote := func() {
 		cBuf := make([]byte, 65536)
@@ -296,7 +300,10 @@ func connectToResource(clientConn net.Conn, req *http.Request, id int, routeToTd
 func handleConnection(clientConn net.Conn, id int) {
 	defer func() {
 		log.Println("Goroutine", id, "is closed.")
-		clientConn.Close()
+		err := clientConn.Close()
+		if err != nil {
+			log.Println(id, ": ClientConn couldn't be closed: ", err)
+		}
 	}()
 	//Parse the request as HTTP
 	req, err := parseRequest(clientConn)

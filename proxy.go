@@ -15,8 +15,8 @@ import (
 	"bytes"
 	"net/http/httputil"
 	"os"
-	"math/rand"
-	"os/exec"
+	//"math/rand"
+	"golang.org/x/net/proxy"
 )
 
 type Endpoint struct {
@@ -52,12 +52,13 @@ func contains(slice []string, s string) bool {
 }
 
 func isBlocked(url *url.URL) (bool) {
-	random := rand.Intn(2)
+	/*random := rand.Intn(2)
 	if random%2 == 0 {
 		return contains(blockedDomains, url.Hostname()) || contains(tempBlockedDomains, url.Hostname())
 	} else {
 		return true
-	}
+	}*/
+	return false
 }
 
 func remove(s []string, e string) []string {
@@ -189,6 +190,32 @@ func connectToTapdance(clientConn net.Conn, req *http.Request, id int) (net.Conn
 	return remoteConn, err
 }
 
+func getMeekListeningPort() (string) {
+	//TODO: Move to meek_adapter
+	//TODO: Scrape meek's log file for last instance of "Listening on..."
+	//TODO: Change log file name to global, pass in from proxy.go
+	return "60984"
+}
+
+func connectToMeek(clientConn net.Conn, req *http.Request, id int) (net.Conn, error) {
+	proxy_addr := "127.0.0.1:"+getMeekListeningPort()
+	socksDialer, err := proxy.SOCKS5("tcp", proxy_addr, nil, proxy.Direct)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "can't connect to the proxy:", err)
+		orPanic(err)
+	}
+	port := req.URL.Port()
+	host := req.URL.Hostname()
+	if port == "" && req.TLS == nil {
+		port = "80"
+	} else if port == "" {
+		port = "443"
+	}
+	//Check args on this
+	//Returns remoteConn, err
+	return socksDialer.Dial("tcp", host+":"+port)
+}
+
 func transmitError(clientConn net.Conn, err error){
 	defer clientConn.Close()
 	_, ok := err.(net.Error)
@@ -216,7 +243,7 @@ func connectToResource(clientConn net.Conn, req *http.Request, id int, routeToTd
 		remoteConn, err = net.Dial("tcp", req.URL.Hostname()+":"+req.URL.Port())
 		if detectedFailedConn(err) {
 			tempBlockedDomains = append(tempBlockedDomains, req.URL.Hostname())
-			remoteConn, err = connectToTapdance(clientConn, req, id)
+			remoteConn, err = connectToMeek(clientConn, req, id)
 			if err != nil {
 				orPanic(err)
 				tempBlockedDomains = remove(tempBlockedDomains, req.URL.Hostname())
@@ -233,11 +260,11 @@ func connectToResource(clientConn net.Conn, req *http.Request, id int, routeToTd
 		}
 	} else {
 		logDomains("detour", req.URL.Hostname(), id)
-		remoteConn, err = connectToTapdance(clientConn, req, id)
+		remoteConn, err = connectToMeek(clientConn, req, id)
 		if err != nil {
 			//Try again
 			//TODO: Should I be retrying to connect here like this?
-			remoteConn, err = connectToTapdance(clientConn, req, id)
+			remoteConn, err = connectToMeek(clientConn, req, id)
 		}
 		if err != nil {
 			//Request probably isn't going through, it failed twice.

@@ -36,17 +36,28 @@ func runMeekClient(cmdName string, args []string) (cmd *exec.Cmd, err error) {
 	return cmd, nil
 }
 
+func configureEnv() (error) {
+	err := os.Setenv("TOR_PT_MANAGED_TRANSPORT_VER", "1")
+	if err != nil {
+		return err
+	}
+	err = os.Setenv("TOR_PT_CLIENT_TRANSPORTS", "meek")
+	return nil
+}
+
 func main() {
 	//TODO: put all configuration flags for PTs in a config file.
 
+	configureEnv()
+
 	//meek-client --url=https://meek-reflect.appspot.com/ --front=www.google.com
-	cmd := "C:\\Users\\Audrey\\go\\src\\github.com\\refraction-networking\\Metis\\meek-client.exe"
-	args := []string{"--url=https://meek-reflect.appspot.com/", "--front=www.google.com"}
+	cmd := "C:\\Users\\Audrey\\go\\src\\github.com\\arlolra\\meek\\meek-client\\meek-client.exe"
+	args := []string{"--url=https://meek-reflect.appspot.com/", "--front=www.google.com", "--log=meek-client.log"}
 	meekClientCmd, err := runMeekClient(cmd, args)
 	if err != nil {
 		log.Print(err)
 		return
 	}
-
+	//TODO: Figure out what kind of message the client expects, and send it, because it isn't just a browser connection.
 	defer logKill(meekClientCmd.Process)
 }

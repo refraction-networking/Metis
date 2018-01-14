@@ -17,6 +17,7 @@ import (
 	"os"
 	//"math/rand"
 	"golang.org/x/net/proxy"
+	"math/rand"
 )
 
 type Endpoint struct {
@@ -52,13 +53,12 @@ func contains(slice []string, s string) bool {
 }
 
 func isBlocked(url *url.URL) (bool) {
-	/*random := rand.Intn(2)
+	random := rand.Intn(2)
 	if random%2 == 0 {
 		return contains(blockedDomains, url.Hostname()) || contains(tempBlockedDomains, url.Hostname())
 	} else {
 		return true
-	}*/
-	return false
+	}
 }
 
 func remove(s []string, e string) []string {
@@ -187,6 +187,8 @@ func connectToTapdance(clientConn net.Conn, req *http.Request, id int) (net.Conn
 	}
 	fmt.Println(id,": req.URL.Hostname():req.URL.Port() after port check: ", host+":"+port)
 	remoteConn, err := tapdance.Dial("tcp", host+":"+port)
+	//TODO: Don't forget to remove this
+	orPanic(err)
 	return remoteConn, err
 }
 
@@ -243,7 +245,7 @@ func connectToResource(clientConn net.Conn, req *http.Request, id int, routeToTd
 		remoteConn, err = net.Dial("tcp", req.URL.Hostname()+":"+req.URL.Port())
 		if detectedFailedConn(err) {
 			tempBlockedDomains = append(tempBlockedDomains, req.URL.Hostname())
-			remoteConn, err = connectToMeek(clientConn, req, id)
+			remoteConn, err = connectToTapdance(clientConn, req, id)
 			if err != nil {
 				orPanic(err)
 				tempBlockedDomains = remove(tempBlockedDomains, req.URL.Hostname())
@@ -260,11 +262,11 @@ func connectToResource(clientConn net.Conn, req *http.Request, id int, routeToTd
 		}
 	} else {
 		logDomains("detour", req.URL.Hostname(), id)
-		remoteConn, err = connectToMeek(clientConn, req, id)
+		remoteConn, err = connectToTapdance(clientConn, req, id)
 		if err != nil {
 			//Try again
 			//TODO: Should I be retrying to connect here like this?
-			remoteConn, err = connectToMeek(clientConn, req, id)
+			remoteConn, err = connectToTapdance(clientConn, req, id)
 		}
 		if err != nil {
 			//Request probably isn't going through, it failed twice.

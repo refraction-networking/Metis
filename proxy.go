@@ -17,7 +17,6 @@ import (
 	"os"
 	//"math/rand"
 	"golang.org/x/net/proxy"
-	"math/rand"
 )
 
 type Endpoint struct {
@@ -53,12 +52,7 @@ func contains(slice []string, s string) bool {
 }
 
 func isBlocked(url *url.URL) (bool) {
-	random := rand.Intn(2)
-	if random%2 == 0 {
 		return contains(blockedDomains, url.Hostname()) || contains(tempBlockedDomains, url.Hostname())
-	} else {
-		return true
-	}
 }
 
 func remove(s []string, e string) []string {
@@ -187,8 +181,6 @@ func connectToTapdance(clientConn net.Conn, req *http.Request, id int) (net.Conn
 	}
 	fmt.Println(id,": req.URL.Hostname():req.URL.Port() after port check: ", host+":"+port)
 	remoteConn, err := tapdance.Dial("tcp", host+":"+port)
-	//TODO: Don't forget to remove this
-	orPanic(err)
 	return remoteConn, err
 }
 
@@ -243,11 +235,10 @@ func connectToResource(clientConn net.Conn, req *http.Request, id int, routeToTd
 
 	if !routeToTd {
 		remoteConn, err = net.Dial("tcp", req.URL.Hostname()+":"+req.URL.Port())
-		if detectedFailedConn(err) {
+		if detectedFailedConn(err) || err!=nil{
 			tempBlockedDomains = append(tempBlockedDomains, req.URL.Hostname())
 			remoteConn, err = connectToTapdance(clientConn, req, id)
 			if err != nil {
-				orPanic(err)
 				tempBlockedDomains = remove(tempBlockedDomains, req.URL.Hostname())
 				log.Println(id, ": Cannot connect to ", req.URL.Hostname(), ": ", err)
 				logDomains("failed", req.URL.Hostname(), id)
@@ -278,16 +269,9 @@ func connectToResource(clientConn net.Conn, req *http.Request, id int, routeToTd
 		}
 	}
 
-	defer func() {
-		remoteConn.Close()
-		//clientConn.Close()
-	}()
+	defer remoteConn.Close()
 
 	if req.Method != "CONNECT" {
-		//Re-add host header since it gets removed
-		/*var host []string
-		host = append(host, req.Host)
-		req.Header["Host"] = host*/
 		requestDump, err := httputil.DumpRequestOut(req, req.Body != nil)
 		fmt.Println(requestDump)
 		if err != nil {
@@ -344,6 +328,7 @@ func handleConnection(clientConn net.Conn, id int) {
 	}
 	method := req.Method
 	reqUrl := req.URL
+	log.Println("Goroutine", id, "is connecting to ", reqUrl)
 
 	//Check to see where request should be routed
 	routeToTransport := isBlocked(reqUrl)

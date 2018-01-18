@@ -168,7 +168,6 @@ func detectedFailedConn(err error) bool {
 
 func doHttpRequest(clientConn net.Conn, req *http.Request, id int) {
 	log.Println(id, ": Performing non-CONNECT HTTP request to ", req.Host)
-	//defer clientConn.Close()
 	//http.Request has a field RequestURI that should be replaced by URL, RequestURI cannot be set for client.Do.
 	req.RequestURI = ""
 	resp, err := client.Do(req)

@@ -17,7 +17,7 @@ import (
 	"os"
 	//"math/rand"
 	"golang.org/x/net/proxy"
-	"math/rand"
+	"errors"
 )
 
 type Endpoint struct {
@@ -53,12 +53,7 @@ func contains(slice []string, s string) bool {
 }
 
 func isBlocked(url *url.URL) (bool) {
-	random := rand.Intn(2)
-	if random%2 == 0 {
 		return contains(blockedDomains, url.Hostname()) || contains(tempBlockedDomains, url.Hostname())
-	} else {
-		return true
-	}
 }
 
 func remove(s []string, e string) []string {
@@ -70,23 +65,25 @@ func remove(s []string, e string) []string {
 	return s
 }
 
-func orPanic(err error) {
-	if err != nil{
-		log.Println(err)
-		panic(err)
-	}
-}
-
-func updateBlockedList() {
+func updateBlockedList() (error){
 	req, err := http.NewRequest("GET", "HTTP://localhost:9090/blocked", nil)
-	orPanic(err)
+	if err != nil {
+		log.Println(err)
+		return err
+	}
 	resp, err := client.Do(req)
-	orPanic(err)
+	if err != nil {
+		log.Println(err)
+		return err
+	}
 	dec := json.NewDecoder(resp.Body)
 
 	// read open bracket
 	t, err := dec.Token()
-	orPanic(err)
+	if err != nil {
+		log.Println(err)
+		return err
+	}
 	fmt.Printf("%T: %v\n", t, t)
 
 	// while the array contains values
@@ -94,7 +91,10 @@ func updateBlockedList() {
 		var site Website
 		// decode an array value (Message)
 		err := dec.Decode(&site)
-		orPanic(err)
+		if err != nil {
+			log.Println(err)
+			return err
+		}
 		fmt.Printf("Domain: %v\n", site.Domain)
 		if !contains(blockedDomains,site.Domain) {
 			blockedDomains = append(blockedDomains, site.Domain)
@@ -103,20 +103,22 @@ func updateBlockedList() {
 
 	// read closing bracket
 	t, err = dec.Token()
-	orPanic(err)
+	if err != nil {
+		log.Println(err)
+		return err
+	}
 	fmt.Printf("%T: %v\n", t, t)
-
+	return nil
 }
 
 func parseRequest(conn net.Conn)(*http.Request, error){
 	connReader := bufio.NewReader(conn)
 	req, err := http.ReadRequest(connReader)
-	if err == io.EOF {return nil, err}
-	orPanic(err)
+	if err != nil {return nil, err}
 	return req, nil
 }
 
-func detectedTampering(id int, req *http.Request, resp *http.Response, err error) bool {
+func detectedTampering(id int, req *http.Request, resp *http.Response, err error) (bool, error) {
 	//TODO: do resets get caught correctly here?
 	//TODO: how to catch TLS certificate errors?
 	netErr, ok := err.(net.Error)
@@ -124,32 +126,35 @@ func detectedTampering(id int, req *http.Request, resp *http.Response, err error
 		//Timeout, RST?
 		log.Println(id, "Website timed out with network error ", netErr)
 		blockedDomains = append(blockedDomains, req.URL.Hostname())
-		return true
+		return true, nil
 	}
 	_, ok = err.(*net.OpError)
 	if ok {
 		//Finds ECONNRESET and EPIPE?
 		log.Println(id, "Website threw net.OpError ", err)
 		blockedDomains = append(blockedDomains, req.URL.Hostname())
-		return true
+		return true, nil
 	}
 	if err != nil {
 		log.Println(id, "Website threw unknown error ", err)
 		//Don't add to blockedDomains because error wasn't due to censorship?
-		orPanic(err)
+		return false, err
 	} else {
 		//HTTP poisoning: Iran only, code taken from https://github.com/getlantern/detour/blob/master/detect.go
 		byteResp, dmpErr := httputil.DumpResponse(resp, true)
-		orPanic(dmpErr)
+		if dmpErr != nil {
+			err = errors.New("response couldn't be dumped to byte slice")
+			return false, err
+		}
 		http403 := []byte("HTTP/1.1 403 Forbidden")
 		iranIFrame := []byte(`<iframe src="http://10.10.34.34`)
 		if bytes.HasPrefix(byteResp, http403) && bytes.Contains(byteResp, iranIFrame) {
 			blockedDomains = append(blockedDomains, req.URL.Hostname())
-			return true
+			return true, nil
 		}
 		//TODO: Other tampering detection should go here
 	}
-	return false
+	return false, nil
 }
 
 func detectedFailedConn(err error) bool {
@@ -167,11 +172,18 @@ func doHttpRequest(clientConn net.Conn, req *http.Request, id int) {
 	//http.Request has a field RequestURI that should be replaced by URL, RequestURI cannot be set for client.Do.
 	req.RequestURI = ""
 	resp, err := client.Do(req)
-	if detectedTampering(id, req, resp, err) {
+	if err == nil {
+		defer resp.Body.Close()
+	}
+	tampered, tamperingErr := detectedTampering(id, req, resp, err)
+	if tamperingErr != nil {
+		log.Println("Error attempting to detect tampering: ", err)
+		return
+	}
+	if tampered {
 		connectToResource(clientConn, req, id, true)
 		return
 	}
-	//orPanic(err)
 	logDomains("direct", req.URL.Hostname(), id)
 	resp.Write(clientConn)
 }
@@ -187,8 +199,6 @@ func connectToTapdance(clientConn net.Conn, req *http.Request, id int) (net.Conn
 	}
 	fmt.Println(id,": req.URL.Hostname():req.URL.Port() after port check: ", host+":"+port)
 	remoteConn, err := tapdance.Dial("tcp", host+":"+port)
-	//TODO: Don't forget to remove this
-	orPanic(err)
 	return remoteConn, err
 }
 
@@ -204,7 +214,7 @@ func connectToMeek(clientConn net.Conn, req *http.Request, id int) (net.Conn, er
 	socksDialer, err := proxy.SOCKS5("tcp", proxy_addr, nil, proxy.Direct)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "can't connect to the proxy:", err)
-		orPanic(err)
+		return nil, err
 	}
 	port := req.URL.Port()
 	host := req.URL.Hostname()
@@ -243,11 +253,10 @@ func connectToResource(clientConn net.Conn, req *http.Request, id int, routeToTd
 
 	if !routeToTd {
 		remoteConn, err = net.Dial("tcp", req.URL.Hostname()+":"+req.URL.Port())
-		if detectedFailedConn(err) {
+		if detectedFailedConn(err) || err!=nil{
 			tempBlockedDomains = append(tempBlockedDomains, req.URL.Hostname())
 			remoteConn, err = connectToTapdance(clientConn, req, id)
 			if err != nil {
-				orPanic(err)
 				tempBlockedDomains = remove(tempBlockedDomains, req.URL.Hostname())
 				log.Println(id, ": Cannot connect to ", req.URL.Hostname(), ": ", err)
 				logDomains("failed", req.URL.Hostname(), id)
@@ -278,16 +287,9 @@ func connectToResource(clientConn net.Conn, req *http.Request, id int, routeToTd
 		}
 	}
 
-	defer func() {
-		remoteConn.Close()
-		//clientConn.Close()
-	}()
+	defer remoteConn.Close()
 
 	if req.Method != "CONNECT" {
-		//Re-add host header since it gets removed
-		/*var host []string
-		host = append(host, req.Host)
-		req.Header["Host"] = host*/
 		requestDump, err := httputil.DumpRequestOut(req, req.Body != nil)
 		fmt.Println(requestDump)
 		if err != nil {
@@ -344,6 +346,7 @@ func handleConnection(clientConn net.Conn, id int) {
 	}
 	method := req.Method
 	reqUrl := req.URL
+	log.Println("Goroutine", id, "is connecting to ", reqUrl)
 
 	//Check to see where request should be routed
 	routeToTransport := isBlocked(reqUrl)
@@ -384,10 +387,16 @@ func (e *Endpoint) Listen(port int, handler func(net.Conn, int)) error {
 
 func logDomains(logFile string, d string, id int) {
 	domainLog, err := os.OpenFile("log/"+logFile+".txt",os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0666)
-	orPanic(err)
+	if err != nil {
+		log.Println("Couldn't open log file "+logFile+".txt")
+		return
+	}
 	defer domainLog.Close()
-	n, err := domainLog.WriteString(d+"\r\n")
-	log.Println(id, ": ", n, "bytes written to log/"+logFile+".txt. Error: ", err)
+	_, err = domainLog.WriteString(d+"\r\n")
+	if err != nil {
+		log.Println("Couldn't write to log file "+logFile+".txt")
+		return
+	}
 	domainLog.Sync()
 }
 
@@ -398,7 +407,9 @@ func main() {
 	os.Create("log/failed.txt")
 	endpt := new(Endpoint)
 	log.Println("Starting Metis proxy....")
-	updateBlockedList()
+	if updateBlockedList() != nil {
+		log.Println("Error updating blocked list, starting with empty blocked list!")
+	}
 	endpt.Listen(8080, handleConnection)
 }
 

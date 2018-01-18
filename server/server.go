@@ -12,11 +12,11 @@ import (
 
 var masterList trie.Trie
 
-func updateFilter(){
+func updateFilter() {
 
 }
 
-func handleMsg(clientConn net.Conn, id int){
+func handleMsg(clientConn net.Conn, id int) {
 	//Add the trie included in the message (with new sites for the blocked list)
 	//to the list of tries to add to master.
 	//Error checking? With what confidence do we list a site as blocked?
@@ -28,15 +28,15 @@ type Website struct {
 
 var blockedList []Website
 
-func getBlocked(writer http.ResponseWriter, req *http.Request){
+func getBlocked(writer http.ResponseWriter, req *http.Request) {
 	json.NewEncoder(writer).Encode(blockedList)
 }
 
-func addBlocked(writer http.ResponseWriter, req *http.Request){
+func addBlocked(writer http.ResponseWriter, req *http.Request) {
 
 }
 
-func main(){
+func main() {
 	//log.SetFlags(log.LstdFlags | log.Lmicroseconds)
 	//endpt := new(endpoint.Endpoint)
 	log.Println("Starting Metis server...")
@@ -46,6 +46,7 @@ func main(){
 	router.HandleFunc("/blocked/add", addBlocked).Methods("POST")
 	blockedList = append(blockedList, Website{Domain: "facebook.com"})
 	blockedList = append(blockedList, Website{Domain: "google.com"})
+	blockedList = append(blockedList, Website{Domain: "www.google.com"})
 	blockedList = append(blockedList, Website{Domain: "bettermotherfuckingwebsite.com"})
 	log.Fatal(http.ListenAndServe(":9090", router))
 }

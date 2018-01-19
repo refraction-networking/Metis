@@ -18,6 +18,7 @@ import (
 	//"math/rand"
 	"golang.org/x/net/proxy"
 	"errors"
+	"runtime"
 )
 
 type Endpoint struct {
@@ -76,6 +77,7 @@ func updateBlockedList() (error){
 		log.Println(err)
 		return err
 	}
+	defer resp.Body.Close()
 	dec := json.NewDecoder(resp.Body)
 
 	// read open bracket
@@ -166,25 +168,28 @@ func detectedFailedConn(err error) bool {
 	return true
 }
 
-func doHttpRequest(clientConn net.Conn, req *http.Request, id int) {
+func doHttpRequest(clientConn net.Conn, req *http.Request, id int) error {
+	defer clientConn.Close()
 	log.Println(id, ": Performing non-CONNECT HTTP request to ", req.Host)
 	//http.Request has a field RequestURI that should be replaced by URL, RequestURI cannot be set for client.Do.
 	req.RequestURI = ""
 	resp, err := client.Do(req)
-	if err == nil {
-		defer resp.Body.Close()
+	if err != nil {
+		return err
 	}
+	defer resp.Body.Close()
 	tampered, tamperingErr := detectedTampering(id, req, resp, err)
 	if tamperingErr != nil {
 		log.Println("Error attempting to detect tampering: ", err)
-		return
+		return err
 	}
 	if tampered {
-		connectToResource(clientConn, req, id, true)
-		return
+		return connectToResource(clientConn, req, id, true)
+
 	}
 	logDomains("direct", req.URL.Hostname(), id)
-	resp.Write(clientConn)
+	err = resp.Write(clientConn)
+	return err
 }
 
 
@@ -245,10 +250,11 @@ func transmitError(clientConn net.Conn, err error){
 	}
 }
 
-func connectToResource(clientConn net.Conn, req *http.Request, id int, routeToTd bool) {
+func connectToResource(clientConn net.Conn, req *http.Request, id int, routeToTd bool) error {
 	log.Println(id, ": CONNECTing to resource ", req.Host)
 	var remoteConn net.Conn
 	var err error
+	errChan := make(chan error)
 
 	if !routeToTd {
 		remoteConn, err = net.Dial("tcp", req.URL.Hostname()+":"+req.URL.Port())
@@ -261,7 +267,7 @@ func connectToResource(clientConn net.Conn, req *http.Request, id int, routeToTd
 				logDomains("failed", req.URL.Hostname(), id)
 				//TODO: Check this error handling.
 				transmitError(clientConn, err)
-				return
+				return err
 			} else {
 				logDomains("detour", req.URL.Hostname(), id)
 			}
@@ -282,32 +288,40 @@ func connectToResource(clientConn net.Conn, req *http.Request, id int, routeToTd
 			log.Println(id, ": Cannot connect to Tapdance after two tries: ", err)
 			logDomains("failed", req.URL.Hostname(), id)
 			transmitError(clientConn, err)
-			return
+			return err
 		}
 	}
 
-	defer remoteConn.Close()
+	defer func() {
+		remoteConn.Close()
+		clientConn.Close()
+		_ = <- errChan
+	}()
 
 	if req.Method != "CONNECT" {
 		requestDump, err := httputil.DumpRequestOut(req, req.Body != nil)
 		fmt.Println(requestDump)
 		if err != nil {
 			fmt.Println(err)
+			//TODO: return err here?
 		}
-		remoteConn.Write(requestDump)
+		_, err = remoteConn.Write(requestDump)
+		if err != nil {
+			fmt.Println(err)
+		}
 		rBuf := make([]byte, 65536)
 		_, err = io.CopyBuffer(clientConn, remoteConn, rBuf)
 		if err != nil {
 			log.Println("Error transmiting response from HTTP request through Tapdance to client: ", err)
+			return err
 		}
-		return
+		return nil
 	}
 
 	clientConn.Write([]byte("HTTP/1.1 200 Connection established\r\n\r\n"))
 
-	errChan := make(chan error)
-
 	forwardFromClientToRemote := func() {
+		defer log.Println(id, "C2R closed!")
 		cBuf := make([]byte, 65536)
 		n, err := io.CopyBuffer(remoteConn, clientConn, cBuf)
 		log.Println(id, ": Client request length: - ", n)
@@ -315,7 +329,9 @@ func connectToResource(clientConn net.Conn, req *http.Request, id int, routeToTd
 	}
 
 	forwardFromRemoteToClient := func() {
+		defer log.Println(id, "R2C closed!")
 		rBuf := make([]byte, 65536)
+		//remoteConn never sends EOF?
 		n, err := io.CopyBuffer(clientConn, remoteConn, rBuf)
 		log.Println(id, ": Remote response length: - ", n)
 		errChan <- err
@@ -323,18 +339,16 @@ func connectToResource(clientConn net.Conn, req *http.Request, id int, routeToTd
 
 	go forwardFromClientToRemote()
 	go forwardFromRemoteToClient()
-	<- errChan
+
+	err = <-errChan
+	if err != nil {
+		log.Println(err)
+	}
+	return err
 }
 
 //Assumes clientConn is not nil. TODO: check assumption
 func handleConnection(clientConn net.Conn, id int) {
-	defer func() {
-		log.Println("Goroutine", id, "is closed.")
-		err := clientConn.Close()
-		if err != nil {
-			log.Println(id, ": ClientConn couldn't be closed: ", err)
-		}
-	}()
 	//Parse the request as HTTP
 	req, err := parseRequest(clientConn)
 	if err == io.EOF { return }
@@ -350,13 +364,17 @@ func handleConnection(clientConn net.Conn, id int) {
 	//Check to see where request should be routed
 	routeToTransport := isBlocked(reqUrl)
 	if !routeToTransport && method != "CONNECT" {
-		doHttpRequest(clientConn, req, id)
+		err = doHttpRequest(clientConn, req, id)
 	} else {
-		connectToResource(clientConn, req, id, routeToTransport)
+		err = connectToResource(clientConn, req, id, routeToTransport)
+	}
+	if err != nil {
+		fmt.Println("Goroutine", id, "returned error", err)
 	}
 }
 
 func (e *Endpoint) handleConnection(clientConn net.Conn, id int, handler func(net.Conn, int)) {
+	defer log.Println("Goroutine", id, "is closed. Number of goroutines:", runtime.NumGoroutine())
 	handler(clientConn, id)
 }
 
@@ -378,7 +396,7 @@ func (e *Endpoint) Listen(port int, handler func(net.Conn, int)) error {
 			log.Println("Failed accepting a connection request:", err)
 			continue
 		}
-		log.Println(id, ": Accepted request, handling messages.")
+		log.Println("*****Number of goroutines:", runtime.NumGoroutine())
 		go e.handleConnection(conn, id, handler)
 		id++
 	}

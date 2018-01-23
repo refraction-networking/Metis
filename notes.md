@@ -75,3 +75,11 @@ Detecting DNS poisoning works as follows:
 3) it either doesn't respond (timeout), responds with a RST, or tries to inject a page. 
 If it's TLS, it won't be able to inject a page, and its certificate won't match.
 
+##Notes 1/22
+
+When Metis is run in China, and Firefox connects to it from the US, and is asked for www.google.com, AND google isn't on
+ the blocked list, then the connection hangs indefinitely. So whatever response Metis gets when it tries to reach Google
+ isn't being handled as evidence of a censored connection. Actually, Chrome exhibits the same behavior. This is a 
+ critical bug, and evidence of a lack of knowledge of how to test code rigorously - something I should keep in mind for 
+ future work. Solution for this one is probably to implement my own timeouts?
+

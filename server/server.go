@@ -46,7 +46,6 @@ func main() {
 	router.HandleFunc("/blocked/add", addBlocked).Methods("POST")
 	blockedList = append(blockedList, Website{Domain: "facebook.com"})
 	blockedList = append(blockedList, Website{Domain: "google.com"})
-	blockedList = append(blockedList, Website{Domain: "www.google.com"})
 	blockedList = append(blockedList, Website{Domain: "bettermotherfuckingwebsite.com"})
 	log.Fatal(http.ListenAndServe(":9090", router))
 }

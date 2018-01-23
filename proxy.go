@@ -19,6 +19,7 @@ import (
 	"golang.org/x/net/proxy"
 	"errors"
 	"runtime"
+	"strings"
 )
 
 type Endpoint struct {
@@ -48,7 +49,7 @@ var failedDomains []string
 
 func contains(slice []string, s string) bool {
 	for _, e := range slice {
-		if e == s { return true}
+		if strings.Contains(s, e) { return true}
 	}
 	return false
 }
@@ -321,7 +322,6 @@ func connectToResource(clientConn net.Conn, req *http.Request, id int, routeToTd
 	clientConn.Write([]byte("HTTP/1.1 200 Connection established\r\n\r\n"))
 
 	forwardFromClientToRemote := func() {
-		defer log.Println(id, "C2R closed!")
 		cBuf := make([]byte, 65536)
 		n, err := io.CopyBuffer(remoteConn, clientConn, cBuf)
 		log.Println(id, ": Client request length: - ", n)
@@ -329,7 +329,6 @@ func connectToResource(clientConn net.Conn, req *http.Request, id int, routeToTd
 	}
 
 	forwardFromRemoteToClient := func() {
-		defer log.Println(id, "R2C closed!")
 		rBuf := make([]byte, 65536)
 		//remoteConn never sends EOF?
 		n, err := io.CopyBuffer(clientConn, remoteConn, rBuf)
@@ -359,10 +358,10 @@ func handleConnection(clientConn net.Conn, id int) {
 	}
 	method := req.Method
 	reqUrl := req.URL
-	log.Println("Goroutine", id, "is connecting to ", reqUrl)
 
 	//Check to see where request should be routed
 	routeToTransport := isBlocked(reqUrl)
+	log.Println("Goroutine", id, "is connecting to ", reqUrl)
 	if !routeToTransport && method != "CONNECT" {
 		err = doHttpRequest(clientConn, req, id)
 	} else {
@@ -396,7 +395,6 @@ func (e *Endpoint) Listen(port int, handler func(net.Conn, int)) error {
 			log.Println("Failed accepting a connection request:", err)
 			continue
 		}
-		log.Println("*****Number of goroutines:", runtime.NumGoroutine())
 		go e.handleConnection(conn, id, handler)
 		id++
 	}

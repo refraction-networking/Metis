@@ -20,6 +20,7 @@ import (
 	"errors"
 	"runtime"
 	"strings"
+	"time"
 )
 
 type Endpoint struct {
@@ -31,7 +32,21 @@ type Website struct {
 	Domain string `json:"domain,omitempty"`
 }
 
-var client = &http.Client{}
+var client = &http.Client{
+	Transport: &http.Transport{
+		Dial: (&net.Dialer{
+			//Limits the time spent establishing a TCP connection (if a new one is needed)
+			//TODO: tweak this value. How? Time how long usual connections take. Valid to take avg over all domains?
+			Timeout:   5 * time.Second,
+			KeepAlive: 30 * time.Second,
+		}).Dial,
+		//limits the time spent performing the TLS handshake.
+		TLSHandshakeTimeout:   5 * time.Second,
+		//Limits time spent reading response headers. TODO: Possibly unnecessary?
+		ResponseHeaderTimeout: 10 * time.Second,
+		ExpectContinueTimeout: 1 * time.Second,
+	},
+}
 
 /*
 Domains Metis is reasonably certain are censored are stored here.
@@ -175,6 +190,8 @@ func doHttpRequest(clientConn net.Conn, req *http.Request, id int) error {
 	//http.Request has a field RequestURI that should be replaced by URL, RequestURI cannot be set for client.Do.
 	req.RequestURI = ""
 	resp, err := client.Do(req)
+	//Possible timeout for DNS lookup, DNS spoof, pretty much everything
+	//Is this where google reqs fail in China?
 	if err != nil {
 		return err
 	}
@@ -202,7 +219,6 @@ func connectToTapdance(clientConn net.Conn, req *http.Request, id int) (net.Conn
 	} else if port == "" {
 		port = "443"
 	}
-	fmt.Println(id,": req.URL.Hostname():req.URL.Port() after port check: ", host+":"+port)
 	remoteConn, err := tapdance.Dial("tcp", host+":"+port)
 	return remoteConn, err
 }
@@ -388,7 +404,6 @@ func (e *Endpoint) Listen(port int, handler func(net.Conn, int)) error {
 	}
 	log.Println("Listening on", e.listener.Addr().String())
 	for {
-		log.Println(id, ": Waiting for a connection request to accept.")
 		//Spins until a request comes in
 		conn, err := e.listener.Accept()
 		if err != nil {

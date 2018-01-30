@@ -85,7 +85,7 @@ func remove(s []string, e string) []string {
 }
 
 func updateBlockedList() (error){
-	req, err := http.NewRequest("GET", "HTTP://localhost:9090/blocked", nil)
+	req, err := http.NewRequest("GET", "HTTP://localhost:9099/blocked", nil)
 	if err != nil {
 		log.Println(err)
 		return err

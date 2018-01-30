@@ -40,12 +40,11 @@ func main() {
 	//log.SetFlags(log.LstdFlags | log.Lmicroseconds)
 	//endpt := new(endpoint.Endpoint)
 	log.Println("Starting Metis server...")
-	//endpt.Listen(9090, handleMsg)
 	router := mux.NewRouter()
 	router.HandleFunc("/blocked", getBlocked).Methods("GET")
 	router.HandleFunc("/blocked/add", addBlocked).Methods("POST")
 	blockedList = append(blockedList, Website{Domain: "facebook.com"})
 	blockedList = append(blockedList, Website{Domain: "google.com"})
 	blockedList = append(blockedList, Website{Domain: "bettermotherfuckingwebsite.com"})
-	log.Fatal(http.ListenAndServe(":9090", router))
+	log.Fatal(http.ListenAndServe(":9099", router))
 }

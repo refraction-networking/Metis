@@ -75,8 +75,10 @@ func isBlocked(url *url.URL) (bool) {
 
 func remove(s []string, e string) []string {
 	for i, ele := range s {
-		if ele==e {
+		if ele==e && i+1 < len(s){
 			s = append(s[:i], s[i+1:]...)
+		} else if ele == e {
+			s = s[:i]
 		}
 	}
 	return s

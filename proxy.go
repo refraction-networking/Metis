@@ -274,7 +274,7 @@ func connectToResource(clientConn net.Conn, req *http.Request, id int, routeToTd
 	errChan := make(chan error)
 
 	if !routeToTd {
-		remoteConn, err = net.Dial("tcp", req.URL.Hostname()+":"+req.URL.Port())
+		remoteConn, err = net.DialTimeout("tcp", req.URL.Hostname()+":"+req.URL.Port(), 5*time.Second)
 		if detectedFailedConn(err) || err!=nil{
 			tempBlockedDomains = append(tempBlockedDomains, req.URL.Hostname())
 			remoteConn, err = connectToTapdance(clientConn, req, id)
@@ -432,9 +432,6 @@ func logDomains(logFile string, d string, id int) {
 
 func main() {
 	log.SetFlags(log.LstdFlags | log.Lmicroseconds)
-	os.Create("log/detour.txt")
-	os.Create("log/direct.txt")
-	os.Create("log/failed.txt")
 	endpt := new(Endpoint)
 	log.Println("Starting Metis proxy....")
 	if updateBlockedList() != nil {

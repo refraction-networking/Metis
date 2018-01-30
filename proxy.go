@@ -274,8 +274,9 @@ func connectToResource(clientConn net.Conn, req *http.Request, id int, routeToTd
 	errChan := make(chan error)
 
 	if !routeToTd {
-		remoteConn, err = net.Dial("tcp", req.URL.Hostname()+":"+req.URL.Port())
+		remoteConn, err = net.DialTimeout("tcp", req.URL.Hostname()+":"+req.URL.Port(), 5*time.Second)
 		if detectedFailedConn(err) || err!=nil{
+			log.Println("Goroutine", id, "failed to CONNECT to resource directly with error", err)
 			tempBlockedDomains = append(tempBlockedDomains, req.URL.Hostname())
 			remoteConn, err = connectToTapdance(clientConn, req, id)
 			if err != nil {
@@ -380,6 +381,11 @@ func handleConnection(clientConn net.Conn, id int) {
 	log.Println("Goroutine", id, "is connecting to ", reqUrl)
 	if !routeToTransport && method != "CONNECT" {
 		err = doHttpRequest(clientConn, req, id)
+		if err != nil {
+			tempBlockedDomains = append(tempBlockedDomains, req.URL.Hostname())
+			log.Println("Goroutine", id, "failed to connect directly with error", err)
+			err = connectToResource(clientConn, req, id, true)
+		}
 	} else {
 		err = connectToResource(clientConn, req, id, routeToTransport)
 	}
@@ -432,9 +438,6 @@ func logDomains(logFile string, d string, id int) {
 
 func main() {
 	log.SetFlags(log.LstdFlags | log.Lmicroseconds)
-	os.Create("log/detour.txt")
-	os.Create("log/direct.txt")
-	os.Create("log/failed.txt")
 	endpt := new(Endpoint)
 	log.Println("Starting Metis proxy....")
 	if updateBlockedList() != nil {

@@ -276,6 +276,7 @@ func connectToResource(clientConn net.Conn, req *http.Request, id int, routeToTd
 	if !routeToTd {
 		remoteConn, err = net.DialTimeout("tcp", req.URL.Hostname()+":"+req.URL.Port(), 5*time.Second)
 		if detectedFailedConn(err) || err!=nil{
+			log.Println("Goroutine", id, "failed to CONNECT to resource directly with error", err)
 			tempBlockedDomains = append(tempBlockedDomains, req.URL.Hostname())
 			remoteConn, err = connectToTapdance(clientConn, req, id)
 			if err != nil {
@@ -380,6 +381,11 @@ func handleConnection(clientConn net.Conn, id int) {
 	log.Println("Goroutine", id, "is connecting to ", reqUrl)
 	if !routeToTransport && method != "CONNECT" {
 		err = doHttpRequest(clientConn, req, id)
+		if err != nil {
+			tempBlockedDomains = append(tempBlockedDomains, req.URL.Hostname())
+			log.Println("Goroutine", id, "failed to connect directly with error", err)
+			err = connectToResource(clientConn, req, id, true)
+		}
 	} else {
 		err = connectToResource(clientConn, req, id, routeToTransport)
 	}

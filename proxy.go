@@ -58,10 +58,6 @@ Domains that Metis has trouble accessing for reasons that might not be censorshi
  */
 var tempBlockedDomains []string
 
-var detouredDomains []string
-var directDomains []string
-var failedDomains []string
-
 func contains(slice []string, s string) bool {
 	for _, e := range slice {
 		if strings.Contains(s, e) { return true}
@@ -192,8 +188,6 @@ func doHttpRequest(clientConn net.Conn, req *http.Request, id int) error {
 	//http.Request has a field RequestURI that should be replaced by URL, RequestURI cannot be set for client.Do.
 	req.RequestURI = ""
 	resp, err := client.Do(req)
-	//Possible timeout for DNS lookup, DNS spoof, pretty much everything
-	//Is this where google reqs fail in China?
 	if err != nil {
 		return err
 	}

@@ -82,4 +82,11 @@ When Metis is run in China, and Firefox connects to it from the US, and is asked
  isn't being handled as evidence of a censored connection. Actually, Chrome exhibits the same behavior. This is a 
  critical bug, and evidence of a lack of knowledge of how to test code rigorously - something I should keep in mind for 
  future work. Solution for this one is probably to implement my own timeouts?
+ 
+ ##Notes 2/3
+ This website http://english.cri.cn/4406/2010/08/09/1981s587568.htm demonstrates an instance of "Tapdance responded with
+  503 Service Unavailable" being displayed on the website in place of the (probably) ad meant to be there. When loaded
+  through not-Tapdance, this item displays "comment.cri.cn’s server IP address could not be found."
+  
+http://libraries.colorado.edu/record=b3535240~S3 also causes problems. 
 

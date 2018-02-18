@@ -10,12 +10,12 @@ import (
 )
 
 func main() {
-	file, err := os.Open("nd_log/detour.txt")
+	file, err := os.Open("alexa_top.txt")
 	if err != nil {
 		fmt.Println(err)
 		os.Exit(1)
 	}
-	output, err := os.Create("nd_log/detour_results.txt")
+	output, err := os.Create("alexa_top_detours.txt")
 	if err != nil {
 		fmt.Println(err)
 		os.Exit(1)
@@ -31,9 +31,9 @@ func main() {
 		}
 		cmd := exec.Command("curl", "-s","--connect-timeout", "5", "-m", "10", line)
 		err := cmd.Run()
-		if err == nil {
+		if err != nil {
 			fmt.Println(line)
-			output.WriteString(line+"\n")
+			output.WriteString(line+": "+err.Error()+"\n")
 			output.Sync()
 		}
 	}

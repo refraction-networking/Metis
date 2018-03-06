@@ -90,3 +90,29 @@ When Metis is run in China, and Firefox connects to it from the US, and is asked
   
 http://libraries.colorado.edu/record=b3535240~S3 also causes problems. 
 
+##Notes 2/18
+
+Symptoms of censorship observed so far:
+1) can't curl the page and can't ping the page: traffic to that domain is being dropped.
+2) Can ping, but can't curl the page: connection reset by peer, reset received, etc. Firewall sent a reset?
+3) Could not resolve host: DNS poisoning OR timeout from DNS server
+
+Broad categories of censorship:
+1) News
+2) Social media
+3) Porn
+
+OONIprobe has done this - detecting censorship
+How do we determine what evaluation metric tells us if a website is blocked?
+What kind of confidence to decide site is blocked? If curl ever gets through, out of 100 runs, site is not blocked.
+So how many failures to connect in a row do we need? Find how often a site connects, use that to say "odds of this many failure
+were 5%" or whatever. Take the minimum over all sites?
+
+TODO:
+1) Find out why Metis is only 70% accurate. Timeouts? Try through Metis again and figure out how often the blocked things are blocked.
+2.5) Find out how many things fail through Metis, fail through testing script, always fail - use that to create evaluation metric
+2) Redesign curl script for greater certainty that things I think are blocked, actually are. Use OONIprobe.
+Test how often I get each error - Fermi approximation.
+
+For next Tues: ground truth and Metis's accuracy as compared to that ground truth
+

@@ -1,39 +1,61 @@
 package main
 
 import (
-	"github.com/fvbock/trie"
 	"log"
-	"net"
 	//"github.com/refraction-networking/Metis/endpoint"
 	"encoding/json"
 	"github.com/gorilla/mux"
 	"net/http"
+	"errors"
+	"fmt"
 )
-
-var masterList trie.Trie
-
-func updateFilter() {
-
-}
-
-func handleMsg(clientConn net.Conn, id int) {
-	//Add the trie included in the message (with new sites for the blocked list)
-	//to the list of tries to add to master.
-	//Error checking? With what confidence do we list a site as blocked?
-}
 
 type Website struct {
 	Domain string `json:"domain,omitempty"`
+	/*
+	//Accuracy - number of times we've tested this domain and run into a problem indicative of censorship.
+	//If we ever test this site and get through, we remove it from the blocked list.
+	acc float `json:"???"
+	 */
 }
 
 var blockedList []Website
 
 func getBlocked(writer http.ResponseWriter, req *http.Request) {
+	//Creates a json encoder that writes to writer
 	json.NewEncoder(writer).Encode(blockedList)
 }
 
 func addBlocked(writer http.ResponseWriter, req *http.Request) {
+	if req.Body == nil {
+		log.Fatal(errors.New("POST request from Metis client was empty"))
+		return
+	}
+	dec := json.NewDecoder(req.Body)
+	// read open bracket
+	t, err := dec.Token()
+	if err != nil {
+		log.Fatal(err)
+	}
+	fmt.Printf("%T: %v\n", t, t)
 
+	// while the array contains values
+	for dec.More() {
+		var w Website
+		// decode an array value (Message)
+		err := dec.Decode(&w)
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		fmt.Printf("%v \n", w.Domain)
+	}
+
+	// read closing bracket
+	t, err = dec.Token()
+	if err != nil {
+		log.Fatal(err)
+	}
 }
 
 func main() {

@@ -48,6 +48,8 @@ var client = &http.Client{
 	},
 }
 
+var transport string
+
 /*
 Domains Metis is reasonably certain are censored are stored here.
  */
@@ -66,7 +68,8 @@ func contains(slice []string, s string) bool {
 }
 
 func isBlocked(url *url.URL) (bool) {
-		return contains(blockedDomains, url.Hostname()) || contains(tempBlockedDomains, url.Hostname())
+		//return contains(blockedDomains, url.Hostname()) || contains(tempBlockedDomains, url.Hostname())
+		return true
 }
 
 func remove(s []string, e string) []string {
@@ -80,7 +83,7 @@ func remove(s []string, e string) []string {
 	return s
 }
 
-func updateBlockedList() (error){
+func getBlockedList() (error){
 	req, err := http.NewRequest("GET", "HTTP://localhost:9099/blocked", nil)
 	if err != nil {
 		log.Println(err)
@@ -124,6 +127,28 @@ func updateBlockedList() (error){
 		return err
 	}
 	fmt.Printf("%T: %v\n", t, t)
+	return nil
+}
+
+//TODO: If the buffer gets too slow, see pipe tutorial here:
+// https://medium.com/stupid-gopher-tricks/streaming-data-in-go-without-buffering-3285ddd2a1e5
+func updateMasterList() error {
+	var testList []Website
+	testList = append(testList, Website{"google.co.in"})
+	testList = append(testList, Website{"docs.google.com"})
+	testList = append(testList, Website{"whatsapp.com"})
+	var buf bytes.Buffer
+	err := json.NewEncoder(&buf).Encode(testList)
+	if err != nil {
+		return err
+	}
+	resp, err := http.Post("HTTP://localhost:9099/blocked/add", "application/json", &buf)
+	if err != nil {
+		return errors.New("Master list update failed with error "+err.Error())
+	}
+	if resp.StatusCode != 200 {
+		return errors.New("Master list update failed with response "+string(resp.StatusCode))
+	}
 	return nil
 }
 
@@ -223,7 +248,7 @@ func getMeekListeningPort() (string) {
 	//TODO: Move to meek_adapter
 	//TODO: Scrape meek's log file for last instance of "Listening on..."
 	//TODO: Change log file name to global, pass in from proxy.go
-	return "60984"
+	return "59094"
 }
 
 func connectToMeek(clientConn net.Conn, req *http.Request, id int) (net.Conn, error) {
@@ -242,7 +267,18 @@ func connectToMeek(clientConn net.Conn, req *http.Request, id int) (net.Conn, er
 	}
 	//Check args on this
 	//Returns remoteConn, err
-	return socksDialer.Dial("tcp", host+":"+port)
+	remoteConn, err := socksDialer.Dial("tcp", host+":"+port)
+	if err != nil {
+		fmt.Println(id,": Error dialing meek!")
+	} else {
+		fmt.Println(id, "Successfully dialed meek!")
+		//n, err := remoteConn.Write([]byte("Hello world"))
+		if err != nil {
+			fmt.Println("Error writing to meek: ", err)
+		}
+		//fmt.Println(n, " bytes written to meek.")
+	}
+	return remoteConn, err
 }
 
 func transmitError(clientConn net.Conn, err error){
@@ -263,6 +299,19 @@ func transmitError(clientConn net.Conn, err error){
 	}
 }
 
+func connectToTransport(clientConn net.Conn, req *http.Request, id int) (net.Conn, error){
+	switch transport {
+	case "meek":
+		conn, err := connectToMeek(clientConn, req, id)
+		//fmt.Println("Using meek: err = ", err)
+		return conn, err
+	case "tapdance":
+		return connectToTapdance(clientConn, req, id)
+	default:
+		return connectToTapdance(clientConn, req, id)
+	}
+}
+
 func connectToResource(clientConn net.Conn, req *http.Request, id int, routeToTd bool) error {
 	log.Println(id, ": CONNECTing to resource ", req.Host)
 	var remoteConn net.Conn
@@ -274,7 +323,7 @@ func connectToResource(clientConn net.Conn, req *http.Request, id int, routeToTd
 		if detectedFailedConn(err) || err!=nil{
 			log.Println("Goroutine", id, "failed to CONNECT to resource directly with error", err)
 			tempBlockedDomains = append(tempBlockedDomains, req.URL.Hostname())
-			remoteConn, err = connectToTapdance(clientConn, req, id)
+			remoteConn, err = connectToTransport(clientConn, req, id)
 			if err != nil {
 				tempBlockedDomains = remove(tempBlockedDomains, req.URL.Hostname())
 				log.Println(id, ": Cannot connect to ", req.URL.Hostname(), ": ", err)
@@ -290,11 +339,11 @@ func connectToResource(clientConn net.Conn, req *http.Request, id int, routeToTd
 		}
 	} else {
 		logDomains("detour", req.URL.Hostname(), id)
-		remoteConn, err = connectToTapdance(clientConn, req, id)
+		remoteConn, err = connectToTransport(clientConn, req, id)
 		if err != nil {
 			//Try again
 			//TODO: Should I be retrying to connect here like this?
-			remoteConn, err = connectToTapdance(clientConn, req, id)
+			remoteConn, err = connectToTransport(clientConn, req, id)
 		}
 		if err != nil {
 			//Request probably isn't going through, it failed twice.
@@ -435,9 +484,13 @@ func logDomains(logFile string, d string, id int) {
 func main() {
 	log.SetFlags(log.LstdFlags | log.Lmicroseconds)
 	endpt := new(Endpoint)
+	transport = "meek"
 	log.Println("Starting Metis proxy....")
-	if updateBlockedList() != nil {
-		log.Println("Error updating blocked list, starting with empty blocked list!")
+	if getBlockedList() != nil {
+		log.Println("Error getting blocked list, starting with empty blocked list!")
+	}
+	if updateMasterList() != nil {
+		log.Println("Error updating server with my blocked list!")
 	}
 	endpt.Listen(8080, handleConnection)
 }

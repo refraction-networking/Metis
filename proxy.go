@@ -68,8 +68,7 @@ func contains(slice []string, s string) bool {
 }
 
 func isBlocked(url *url.URL) (bool) {
-		//return contains(blockedDomains, url.Hostname()) || contains(tempBlockedDomains, url.Hostname())
-		return true
+		return contains(blockedDomains, url.Hostname()) || contains(tempBlockedDomains, url.Hostname())
 }
 
 func remove(s []string, e string) []string {
@@ -133,12 +132,13 @@ func getBlockedList() (error){
 //TODO: If the buffer gets too slow, see pipe tutorial here:
 // https://medium.com/stupid-gopher-tricks/streaming-data-in-go-without-buffering-3285ddd2a1e5
 func updateMasterList() error {
-	var testList []Website
+	/*var testList []Website
 	testList = append(testList, Website{"google.co.in"})
 	testList = append(testList, Website{"docs.google.com"})
 	testList = append(testList, Website{"whatsapp.com"})
+	*/
 	var buf bytes.Buffer
-	err := json.NewEncoder(&buf).Encode(testList)
+	err := json.NewEncoder(&buf).Encode(blockedDomains)
 	if err != nil {
 		return err
 	}
@@ -481,17 +481,24 @@ func logDomains(logFile string, d string, id int) {
 	domainLog.Sync()
 }
 
+func talkToServer() {
+	for {
+		if updateMasterList() != nil {
+			log.Println("Error updating server with my blocked list!")
+		}
+		time.Sleep(15*time.Second)
+	}
+}
+
 func main() {
 	log.SetFlags(log.LstdFlags | log.Lmicroseconds)
 	endpt := new(Endpoint)
-	transport = "meek"
+	transport = "tapdance"
 	log.Println("Starting Metis proxy....")
 	if getBlockedList() != nil {
 		log.Println("Error getting blocked list, starting with empty blocked list!")
 	}
-	if updateMasterList() != nil {
-		log.Println("Error updating server with my blocked list!")
-	}
+	go talkToServer()
 	endpt.Listen(8080, handleConnection)
 }
 

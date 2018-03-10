@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"errors"
 	"fmt"
+	"strings"
 )
 
 type Website struct {
@@ -20,6 +21,13 @@ type Website struct {
 }
 
 var blockedList []Website
+
+func contains(slice []Website, s string) bool {
+	for _, e := range slice {
+		if strings.Contains(s, e.Domain) { return true}
+	}
+	return false
+}
 
 func getBlocked(writer http.ResponseWriter, req *http.Request) {
 	//Creates a json encoder that writes to writer
@@ -41,14 +49,17 @@ func addBlocked(writer http.ResponseWriter, req *http.Request) {
 
 	// while the array contains values
 	for dec.More() {
-		var w Website
+		var d string
 		// decode an array value (Message)
-		err := dec.Decode(&w)
+		err := dec.Decode(&d)
 		if err != nil {
 			log.Fatal(err)
 		}
 
-		fmt.Printf("%v \n", w.Domain)
+		fmt.Printf("%v \n", d)
+		if !contains(blockedList, d) {
+			blockedList = append(blockedList, Website{Domain: d})
+		}
 	}
 
 	// read closing bracket

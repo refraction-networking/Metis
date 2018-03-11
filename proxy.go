@@ -332,13 +332,13 @@ func connectToResource(clientConn net.Conn, req *http.Request, id int, routeToTd
 				transmitError(clientConn, err)
 				return err
 			} else {
+				blockedDomains = append(blockedDomains, req.URL.Hostname())
 				logDomains("detour", req.URL.Hostname(), id)
 			}
 		} else {
 			logDomains("direct", req.URL.Hostname(), id)
 		}
 	} else {
-		logDomains("detour", req.URL.Hostname(), id)
 		remoteConn, err = connectToTransport(clientConn, req, id)
 		if err != nil {
 			//Try again
@@ -353,6 +353,8 @@ func connectToResource(clientConn net.Conn, req *http.Request, id int, routeToTd
 			transmitError(clientConn, err)
 			return err
 		}
+		logDomains("detour", req.URL.Hostname(), id)
+		blockedDomains = append(blockedDomains, req.URL.Hostname())
 	}
 
 	defer func() {

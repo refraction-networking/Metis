@@ -115,4 +115,5 @@ TODO:
 Test how often I get each error - Fermi approximation.
 
 For next Tues: ground truth and Metis's accuracy as compared to that ground truth
+Were the false positives from Metis actually just failed? There was a bug where they were getting logged in detour and failed.
 

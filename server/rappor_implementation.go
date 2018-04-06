@@ -8,7 +8,6 @@ import (
 	"io"
 	"crypto/hmac"
 	"crypto/sha256"
-	"testing"
 )
 
 /*
@@ -134,7 +133,7 @@ func getBloomBits(word []byte, cohort int, numHashes int, numBloombits int) []in
 	return retVal
 }
 
-func getPrrMasks(secret string, word string, probF float64, numBits int) (int, int){
+func getPrrMasks(secret string, word string, probF float64) (int, int){
 	key := []byte(secret)
 	hash := hmac.New(sha256.New, key)
 	hash.Write([]byte(word))
@@ -191,8 +190,8 @@ func (e *Encoder) internalEncodeBits(bits int) (int, int){
 	Returns:
 		The PRR and IRR.  The PRR should never be sent over the network.
 	*/
-	// Compute Permanent Randomized Response (PRR).
-	uniform, fMask := getPrrMasks(e.secret, string(toBigEndian(int64(bits))), e.params.probF, e.params.numBloomBits)
+	// Compute Permanent Randomized Response (PRR). Uniform and fMask are 32 bits long.
+	uniform, fMask := getPrrMasks(e.secret, string(toBigEndian(int64(bits))), e.params.probF)
 	/*
 	Suppose bit i of the Bloom filter is B_i.  Then bit i of the PRR is
 	defined as:
@@ -262,6 +261,32 @@ word: the string that should be privately transmitted.
 	return irr
 }
 
+func estimateSetBits(reports []int, params Params) []float64 {
+	/*
+	Estimate which bits were truly set in B for a particular cohort.
+	Returns: Y, a slice of the number of times each bit was estimated
+	to have been truly set in B.
+	This function will be called for each cohort. j represents the jth
+	cohort and is included only to keep variable names matching the paper.
+	 */
+	p := params.probP
+	q := params.probQ
+	f := params.probF
+	Nj := float64(len(reports))
+	var Y_j []float64
+	for i:=0; i<32; i++ {
+		c_ij := 0.0
+		for _, rep := range reports {
+			if rep & (1<<uint(i)) == 1 {
+				c_ij += 1.0
+			}
+		}
+		t_ij := c_ij-(p+0.5*f*q-0.5*f*p)*Nj/((1-f)*(q-p))
+		Y_j = append(Y_j, t_ij)
+	}
+	return Y_j
+}
+
 func main() {
 	/*var s SecureRandom
 	s.init(0.5,4)
@@ -271,4 +296,9 @@ func main() {
 	p.init()
 	s.init(p)
 	getBloomBits([]byte("asdf"), 0, 0, 0)
+	var e Encoder
+	e.init(p, 1,"my secret string is very secret", &s)
+	rep1 := e.encode([]byte("google.com"))
+	rep2 := e.encode([]byte("facebook.com"))
+	fmt.Println(rep1, ", ", rep2)
 }

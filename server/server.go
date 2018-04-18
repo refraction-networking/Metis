@@ -13,6 +13,7 @@ import (
 
 type Website struct {
 	Domain string `json:"domain,omitempty"`
+	IRR int
 	/*
 	//Accuracy - number of times we've tested this domain and run into a problem indicative of censorship.
 	//If we ever test this site and get through, we remove it from the blocked list.
@@ -22,9 +23,16 @@ type Website struct {
 
 var blockedList []Website
 
-func contains(slice []Website, s string) bool {
+func containsStr(slice []Website, s string) bool {
 	for _, e := range slice {
 		if strings.Contains(s, e.Domain) { return true}
+	}
+	return false
+}
+
+func containsInt(slice []Website, i int) bool {
+	for _, e := range slice {
+		if i==e.IRR { return true}
 	}
 	return false
 }
@@ -49,17 +57,17 @@ func addBlocked(writer http.ResponseWriter, req *http.Request) {
 
 	// while the array contains values
 	for dec.More() {
-		var d string
+		var irr int
 		// decode an array value (Message)
-		err := dec.Decode(&d)
+		err := dec.Decode(&irr)
 		if err != nil {
 			log.Fatal(err)
 		}
 
-		fmt.Printf("%v \n", d)
-		if !contains(blockedList, d) {
+		fmt.Println(irr)
+		/*if !containsInt(blockedList, irr) {
 			blockedList = append(blockedList, Website{Domain: d})
-		}
+		}*/
 	}
 
 	// read closing bracket

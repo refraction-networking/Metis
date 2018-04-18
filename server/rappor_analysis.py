@@ -34,6 +34,7 @@ import json
 import struct
 import sys
 import numpy as np
+import time
 
 from random import SystemRandom
 from sklearn import linear_model
@@ -52,13 +53,14 @@ class Params(object):
   """RAPPOR encoding parameters.
   These affect privacy/anonymity.  See the paper for details.
   """
-  def __init__(self):
-    self.num_bloombits = 16      # Number of bloom filter bits (k)
-    self.num_hashes = 2          # Number of bloom filter hashes (h)
-    self.num_cohorts = 3        # Number of cohorts (m) was 64
-    self.prob_p = 0.50           # Probability p
-    self.prob_q = 0.75           # Probability q
-    self.prob_f = 0.50           # Probability f
+  def __init__(self, num_bloombits=16, num_hashes=2, num_cohorts=64, 
+               prob_p=0.50, prob_q=0.75, prob_f=0.50):
+    self.num_bloombits = num_bloombits      # Number of bloom filter bits (k)
+    self.num_hashes = num_hashes          # Number of bloom filter hashes (h)
+    self.num_cohorts = num_cohorts        # Number of cohorts (m) was 64
+    self.prob_p = prob_p           # Probability p
+    self.prob_q = prob_q           # Probability q
+    self.prob_f = prob_f           # Probability f
 
   # For testing
   def __eq__(self, other):
@@ -375,7 +377,6 @@ def estimateSetBits(reports, params):
     f = params.prob_f
     Nj = len(reports)
     Y_j = []
-    print("Reports should be single list: ", len(reports))
     for i in range(0,params.num_bloombits):
         c_ij = 0.0
         for rep in reports:
@@ -429,40 +430,105 @@ def makeDesignMatrix(params, numDomains):
         for domain in blooms[cohort]:
             #domain is a list of the bits that need to be set
             for bitToSet in domain:
-                X[cohort*k+bitToSet, domainColumn] += 1
+                X[cohort*k+bitToSet, domainColumn] = 1
             domainColumn+=1
     #print(X)
-    return X
+    return X, domains
 
 def doLassoRegression(params, numDomains, reports):
-    X = makeDesignMatrix(params, numDomains)
+    X, domains = makeDesignMatrix(params, numDomains)
     Y_list = []
     for i in range(0, params.num_cohorts):
         Y_j = estimateSetBits(reports[i], params)
         Y_list.append(Y_j)
     Y = np.array(Y_list)
     Y = Y.flatten()
-    print("X.shape: ", X.shape, ", Y.shape: ", Y.shape)
-    print(X)
-    print(Y)
-    linreg = linear_model.LassoCV()
+
+    linreg = linear_model.LassoCV(n_alphas=10, cv=10)
     linreg.fit(X,Y)
     print("Coefficients: ", linreg.coef_)
     print("Alpha: ", linreg.alpha_)
-    return linreg.coef_
-    #This should tell us which columns have been reported on by telling us which 
-    #coefficients are significantly different from zero.
+    return X, Y, linreg, domains
+
+def doLinearRegression(X, Y):
+    X = sm.add_constant(X)
+    ols = sm.OLS(Y,X)
+    results = ols.fit()
+    #Apply Bonferroni error correction
+    bonferroni_alpha = 0.05/M
+    #Remove the first p-value: it's for the added constant term, not a coefficient associated with a domain
+    p_vals = results.pvalues[1:]
+    
+    return np.where(p_vals <= bonferroni_alpha)[0]
     
 def testAllTheThings(numReportedDomains, numTotalDomains, numDuplicates):
-    p = Params()
     domainsToReport = getDomains(numReportedDomains)
     print("Domains to report:", domainsToReport)
-    reports = generateReports(p, domainsToReport, numDuplicates)
-    print("Reports:", len(reports[0]))
-    return doLassoRegression(p, numTotalDomains, reports)
+    
+    prob_fs = [0.0, 0.01, 0.1, 0.25, 0.5]
+    coefs = {}
+    for f in prob_fs:
+        p = Params(prob_f=f)
+        reports = generateReports(p, domainsToReport, numDuplicates)
+        print("Reports:", len(reports[0]))
+        coefs[f] = doLassoRegression(p, numTotalDomains, reports)
+    return coefs
 
-coefs = testAllTheThings(5, 10, 1000000)
+def readRapporReports(filename):
+    reportFile = open(filename, 'r')
+    reps = []
+    for line in reportFile:
+        reps.append(int(line.rstrip()))
+    reportFile.close()
+    return reps
+
+def analyzeReports(filename, params, numDomains):
+    reps = readRapporReports()
+    lassX, lassY, lassoReg, domains = doLassoRegression(params, numDomains, reps)
+    relevantDomains = np.where(lassoReg.coef_!=0)[0]
+    linX = lassX[:,relevantDomains]
+    #Keep track of the domains the LASSO selected
+    linDoms = domains[relevantDomains]
+    #Confirm that the domains LASSO selected are relevant using linear regression
+    #This may prune out more domains than LASSO did
+    finalRelevantIdxs = doLinearRegression(linX, lassY)
+    return linDoms[finalRelevantIdxs]
+
+def main():
+    rapporRepsFile = "rappor_reports.txt"
+    numDomains = 10
+    params = Params(prob_f=0.2)
+    reportedDoms = analyzeReports(rapporRepsFile, params, numDomains)
+    
+    masterBlockedList = "master_blocked_list.txt"
+    mbl = open(masterBlockedList, 'r+')
+    alreadyBlocked = []
+    for line in mbl:
+        alreadyBlocked.append(line.rstrip())
+    
+    newBlocked = []
+    for d in reportedDoms:
+        if d not in alreadyBlocked:
+            newBlocked.append(d)
+    mbl.close()
+    
+    mbl = open(masterBlockedList, 'a')
+    for d in newBlocked:
+        mbl.write(d+"\r\n")
+    
+
+
+
+
+
+'''t0 = time.time()
+coefs = testAllTheThings(5, 10, 10000, 91)
 print(len(np.where(coefs != 0)[0]))
+t1 = time.time()
+print("Time taken: ", t1-t0)
+#It sort of looks like alpha should scale based on number of features:
+#if alpha=80 is right for 1,000, then alpha=800 is right for 10,000
+'''
 
 
 

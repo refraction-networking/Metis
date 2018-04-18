@@ -21,6 +21,7 @@ import (
 	"runtime"
 	"strings"
 	"time"
+	"math/rand"
 )
 
 type Endpoint struct {
@@ -49,6 +50,7 @@ var client = &http.Client{
 }
 
 var transport string
+var hmacSecret string
 
 /*
 Domains Metis is reasonably certain are censored are stored here.
@@ -83,7 +85,7 @@ func remove(s []string, e string) []string {
 }
 
 func getBlockedList() (error){
-	req, err := http.NewRequest("GET", "HTTP://localhost:9099/blocked", nil)
+	req, err := http.NewRequest("GET", "HTTP://localhost:5000/blocked", nil)
 	if err != nil {
 		log.Println(err)
 		return err
@@ -94,15 +96,18 @@ func getBlockedList() (error){
 		return err
 	}
 	defer resp.Body.Close()
-	dec := json.NewDecoder(resp.Body)
+	fmt.Println("Response body is: ", resp.Body)
+	/*dec := json.NewDecoder(resp.Body)
+
 
 	// read open bracket
 	t, err := dec.Token()
 	if err != nil {
-		log.Println(err)
+		log.Println("In getBlockedList, ", err)
 		return err
 	}
 	fmt.Printf("%T: %v\n", t, t)
+
 
 	// while the array contains values
 	for dec.More() {
@@ -110,7 +115,7 @@ func getBlockedList() (error){
 		// decode an array value (Message)
 		err := dec.Decode(&site)
 		if err != nil {
-			log.Println(err)
+			log.Println("In getBlockedList, ", err)
 			return err
 		}
 		fmt.Printf("Domain: %v\n", site.Domain)
@@ -125,24 +130,40 @@ func getBlockedList() (error){
 		log.Println(err)
 		return err
 	}
-	fmt.Printf("%T: %v\n", t, t)
+	fmt.Printf("%T: %v\n", t, t)*/
 	return nil
 }
 
-//TODO: If the buffer gets too slow, see pipe tutorial here:
+func generateSecret(){
+	rand.Seed(time.Now().UnixNano())
+	var letterRunes = []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
+	b := make([]rune, 10)
+	for i := range b {
+		b[i] = letterRunes[rand.Intn(len(letterRunes))]
+	}
+	hmacSecret =  string(b)
+}
+
+// If the buffer gets too slow, see pipe tutorial here:
 // https://medium.com/stupid-gopher-tricks/streaming-data-in-go-without-buffering-3285ddd2a1e5
 func updateMasterList() error {
-	/*var testList []Website
-	testList = append(testList, Website{"google.co.in"})
-	testList = append(testList, Website{"docs.google.com"})
-	testList = append(testList, Website{"whatsapp.com"})
-	*/
 	var buf bytes.Buffer
-	err := json.NewEncoder(&buf).Encode(blockedDomains)
+	var s SecureIrrRand
+	var p Params
+	p.init()
+	s.init(p)
+	var e Encoder
+
+	e.init(p, 1, hmacSecret, &s)
+	var rappor []int
+	for i := 0; i < len(blockedDomains); i++ {
+		rappor = append(rappor, e.Encode([]byte(blockedDomains[i])))
+	}
+	err := json.NewEncoder(&buf).Encode(rappor)
 	if err != nil {
 		return err
 	}
-	resp, err := http.Post("HTTP://localhost:9099/blocked/add", "application/json", &buf)
+	resp, err := http.Post("HTTP://localhost:5000/blocked", "application/json", &buf)
 	if err != nil {
 		return errors.New("Master list update failed with error "+err.Error())
 	}
@@ -497,6 +518,9 @@ func main() {
 	endpt := new(Endpoint)
 	transport = "tapdance"
 	log.Println("Starting Metis proxy....")
+	//Set the HMAC secret for generating the PRRs in RAPPOR
+	generateSecret()
+	//Ask the master server for the blocked list
 	if getBlockedList() != nil {
 		log.Println("Error getting blocked list, starting with empty blocked list!")
 	}

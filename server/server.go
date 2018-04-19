@@ -42,6 +42,7 @@ func getBlocked(writer http.ResponseWriter, req *http.Request) {
 	json.NewEncoder(writer).Encode(blockedList)
 }
 
+//Adds all RAPPOR reports to a file for the python analysis script to read
 func addBlocked(writer http.ResponseWriter, req *http.Request) {
 	if req.Body == nil {
 		log.Fatal(errors.New("POST request from Metis client was empty"))

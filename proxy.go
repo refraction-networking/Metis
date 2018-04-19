@@ -96,8 +96,9 @@ func getBlockedList() (error){
 		return err
 	}
 	defer resp.Body.Close()
-	fmt.Println("Response body is: ", resp.Body)
-	/*dec := json.NewDecoder(resp.Body)
+	//body, _ := ioutil.ReadAll(resp.Body)
+	//fmt.Println("Body is: ", body)
+	dec := json.NewDecoder(resp.Body)
 
 
 	// read open bracket
@@ -106,7 +107,7 @@ func getBlockedList() (error){
 		log.Println("In getBlockedList, ", err)
 		return err
 	}
-	fmt.Printf("%T: %v\n", t, t)
+	fmt.Printf("First character type: %T, character: %v\n", t, t)
 
 
 	// while the array contains values
@@ -130,7 +131,7 @@ func getBlockedList() (error){
 		log.Println(err)
 		return err
 	}
-	fmt.Printf("%T: %v\n", t, t)*/
+	fmt.Printf("%T: %v\n", t, t)
 	return nil
 }
 

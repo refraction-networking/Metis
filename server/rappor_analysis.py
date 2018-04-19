@@ -490,7 +490,7 @@ def analyzeReports(filename, params, numDomains):
     #Keep track of the domains the LASSO selected
     linDoms = domains[relevantDomains]
     #Confirm that the domains LASSO selected are relevant using linear regression
-    #This may prune out more domains than LASSO did
+    #This may prune out even more domains than LASSO did
     finalRelevantIdxs = doLinearRegression(linX, lassY)
     return linDoms[finalRelevantIdxs]
 

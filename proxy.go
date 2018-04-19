@@ -158,6 +158,8 @@ func updateMasterList() error {
 	e.init(p, 1, hmacSecret, &s)
 	var rappor []int
 	for i := 0; i < len(blockedDomains); i++ {
+		fmt.Println("Blocked domains: ", blockedDomains)
+		fmt.Println(e.Encode([]byte(blockedDomains[i])))
 		rappor = append(rappor, e.Encode([]byte(blockedDomains[i])))
 	}
 	err := json.NewEncoder(&buf).Encode(rappor)
@@ -171,6 +173,7 @@ func updateMasterList() error {
 	if resp.StatusCode != 200 {
 		return errors.New("Master list update failed with response "+string(resp.StatusCode))
 	}
+	fmt.Println("Post request completed successfully.")
 	return nil
 }
 

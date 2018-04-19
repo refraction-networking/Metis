@@ -3,9 +3,11 @@
 
 from flask import Flask, request
 from flask_restful import Resource, Api, reqparse
-from json import dumps
 
+import json
 import sqlite3
+
+import rappor_analysis as rappor
 
 class Sql():
     def __init__(self, dbName):
@@ -18,33 +20,54 @@ class Sql():
         self.conn.commit()
             
     def populateDummyData(self):
-        # SQL command to insert the data in the table
         sql_command = """INSERT OR IGNORE INTO domains VALUES ("google.com");"""
         self.crsr.execute(sql_command)
+        sql_command = """INSERT OR IGNORE INTO domains VALUES ("facebook.com");"""
+        self.crsr.execute(sql_command)
+        self.conn.commit()
+        
+    def addToDB(self, domain):
+        cmd = "INSERT OR IGNORE INTO domains VALUES (\""+domain+"\");"
+        self.crsr.execute(cmd)
         self.conn.commit()
     
     def getBlockedList(self):
         cmd = "SELECT * FROM domains;"
         self.crsr.execute(cmd)
         return self.crsr.fetchall()
+    
+    def clearDB(self):
+        cmd = "DELETE FROM domains;"
+        self.crsr.execute(cmd)
+        self.conn.commit()
         
 
 class BlockedList(Resource):
     def __init__(self):
         self.sql = Sql("master_blocked_list.db")
+        #self.sql.clearDB()
         self.sql.populateDummyData()
         
     def get(self):
         print("Request for blocked list made by client: ")
-        blocked = self.sql.getBlockedList()
-        print(blocked)
-        #return [{'Domain':'Earth'}]
+        sqlBlocked = self.sql.getBlockedList()
+        blocked = []
+        for dom in sqlBlocked:
+            blocked.append({'Domain':dom[0]})
         return blocked
     
     def post(self):
         print("Client sent RAPPOR things to us: ")
         data = request.data
-        print "Data: ", data[0]
+        print(data)
+        cliMsg = json.loads(data)
+        print("Client message is ", cliMsg)
+        reps = {cliMsg["cohort"]:cliMsg["reports"]}
+        numDomains = 10
+        params = rappor.Params(prob_f=0.2)
+        doms = rappor.analyzeReports(reps, params, numDomains)
+        for d in doms:
+            self.sql.addToDB(d)
         return '', 200
 
 def main():

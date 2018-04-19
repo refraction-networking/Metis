@@ -35,6 +35,7 @@ import struct
 import sys
 import numpy as np
 import time
+import statsmodels.api as sm
 
 from random import SystemRandom
 from sklearn import linear_model
@@ -401,9 +402,10 @@ def getDomains(numDomains):
         domains.append(line.rstrip())
     return domains[0:numDomains]
 
-def getBloomFilters(domains, numCohorts, numHashes, numBloomBits):
+def getBloomFilters(domains, cohorts, numHashes, numBloomBits):
+    """cohorts is a list of the cohorts that were reported this time"""
     blooms = {}
-    for m in range(0, numCohorts):
+    for m in cohorts:
         bloomsForCohort = []
         for d in domains:
             bits = get_bloom_bits(d, m, numHashes, numBloomBits)
@@ -414,43 +416,51 @@ def getBloomFilters(domains, numCohorts, numHashes, numBloomBits):
     #print(blooms)
     return blooms
 
-def makeDesignMatrix(params, numDomains):
+def makeDesignMatrix(params, cohorts, numDomains):
+    """"cohorts is a list of the cohorts that were reported this time"""
     k = params.num_bloombits #number of bits in Bloom filter
-    m = params.num_cohorts
+    m = len(cohorts)
     #M is number of candidate strings
     #h is the number of hash functions per cohort
     domains = getDomains(numDomains)
-    blooms = getBloomFilters(domains, params.num_cohorts, params.num_hashes, params.num_bloombits)
+    blooms = getBloomFilters(domains, cohorts, params.num_hashes, params.num_bloombits)
     
     X = np.zeros([k*m, numDomains])
     
     for cohort in blooms:
         #print("Cohort: ", cohort)
         domainColumn = 0
+        rowChunk = 0
         for domain in blooms[cohort]:
             #domain is a list of the bits that need to be set
             for bitToSet in domain:
-                X[cohort*k+bitToSet, domainColumn] = 1
+                X[rowChunk*k+bitToSet, domainColumn] = 1
             domainColumn+=1
+        rowChunk += 1
     #print(X)
     return X, domains
 
 def doLassoRegression(params, numDomains, reports):
-    X, domains = makeDesignMatrix(params, numDomains)
+    #reports is supposed to be a dictionary whose keys are the cohort number and whose values are the list of reports from that cohort
+    #This needs to be rethought because every time we run this code, we're only using one cohort
+    #Need to redesign on client side to send cohort #
+    #So server needs to send cohort # when client first requests blocked list
+    X, domains = makeDesignMatrix(params, reports.keys(), numDomains)
     Y_list = []
-    for i in range(0, params.num_cohorts):
-        Y_j = estimateSetBits(reports[i], params)
+    for key in reports:
+        Y_j = estimateSetBits(reports[key], params)
         Y_list.append(Y_j)
     Y = np.array(Y_list)
     Y = Y.flatten()
 
+    print("********X_shape: ", X.shape, ", y-shape: ", Y.shape)
     linreg = linear_model.LassoCV(n_alphas=10, cv=10)
     linreg.fit(X,Y)
     print("Coefficients: ", linreg.coef_)
     print("Alpha: ", linreg.alpha_)
     return X, Y, linreg, domains
 
-def doLinearRegression(X, Y):
+def doLinearRegression(X, Y, M):
     X = sm.add_constant(X)
     ols = sm.OLS(Y,X)
     results = ols.fit()
@@ -482,19 +492,24 @@ def readRapporReports(filename):
     reportFile.close()
     return reps
 
-def analyzeReports(filename, params, numDomains):
-    reps = readRapporReports()
+def analyzeReports(reps, params, numDomains):
     lassX, lassY, lassoReg, domains = doLassoRegression(params, numDomains, reps)
     relevantDomains = np.where(lassoReg.coef_!=0)[0]
     linX = lassX[:,relevantDomains]
+    print("domains: ", domains, ", relevantDomains: ", relevantDomains)
     #Keep track of the domains the LASSO selected
-    linDoms = domains[relevantDomains]
-    #Confirm that the domains LASSO selected are relevant using linear regression
-    #This may prune out even more domains than LASSO did
-    finalRelevantIdxs = doLinearRegression(linX, lassY)
-    return linDoms[finalRelevantIdxs]
+    if len(relevantDomains) != 0:
+        doms = np.array(domains)
+        rels = np.array(relevantDomains)
+        linDoms = doms[rels]
+        #Confirm that the domains LASSO selected are relevant using linear regression
+        #This may prune out even more domains than LASSO did
+        finalRelevantIdxs = doLinearRegression(linX, lassY, numDomains)
+        return linDoms[finalRelevantIdxs]
+    else:
+        return []
 
-def main():
+"""def main():
     rapporRepsFile = "rappor_reports.txt"
     numDomains = 10
     params = Params(prob_f=0.2)
@@ -517,7 +532,7 @@ def main():
         mbl.write(d+"\r\n")
     
 
-
+"""
 
 
 

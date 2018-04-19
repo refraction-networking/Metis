@@ -33,6 +33,11 @@ type Website struct {
 	Domain string `json:"domain,omitempty"`
 }
 
+type SvrMsg struct {
+	Cohort int `json:"cohort,omitempty"`
+	Reports []int `json:"reports,omitempty"`
+}
+
 var client = &http.Client{
 	Transport: &http.Transport{
 		Dial: (&net.Dialer{
@@ -51,6 +56,7 @@ var client = &http.Client{
 
 var transport string
 var hmacSecret string
+var cohort int
 
 /*
 Domains Metis is reasonably certain are censored are stored here.
@@ -70,7 +76,7 @@ func contains(slice []string, s string) bool {
 }
 
 func isBlocked(url *url.URL) (bool) {
-		return contains(blockedDomains, url.Hostname()) || contains(tempBlockedDomains, url.Hostname())
+	return contains(blockedDomains, url.Hostname()) || contains(tempBlockedDomains, url.Hostname())
 }
 
 func remove(s []string, e string) []string {
@@ -155,14 +161,15 @@ func updateMasterList() error {
 	s.init(p)
 	var e Encoder
 
-	e.init(p, 1, hmacSecret, &s)
+	e.init(p, cohort, hmacSecret, &s)
 	var rappor []int
 	for i := 0; i < len(blockedDomains); i++ {
-		fmt.Println("Blocked domains: ", blockedDomains)
-		fmt.Println(e.Encode([]byte(blockedDomains[i])))
+		//fmt.Println("Blocked domains[i]: ", blockedDomains[i])
+		//fmt.Println(e.Encode([]byte(blockedDomains[i])))
 		rappor = append(rappor, e.Encode([]byte(blockedDomains[i])))
 	}
-	err := json.NewEncoder(&buf).Encode(rappor)
+	svrMsg := SvrMsg{cohort, rappor}
+	err := json.NewEncoder(&buf).Encode(svrMsg)
 	if err != nil {
 		return err
 	}
@@ -524,6 +531,8 @@ func main() {
 	log.Println("Starting Metis proxy....")
 	//Set the HMAC secret for generating the PRRs in RAPPOR
 	generateSecret()
+	//TODO: Have the server tell the client what cohort it belongs to?
+	cohort=1
 	//Ask the master server for the blocked list
 	if getBlockedList() != nil {
 		log.Println("Error getting blocked list, starting with empty blocked list!")

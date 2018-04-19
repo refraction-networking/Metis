@@ -520,7 +520,7 @@ func talkToServer() {
 		if updateMasterList() != nil {
 			log.Println("Error updating server with my blocked list!")
 		}
-		time.Sleep(15*time.Second)
+		time.Sleep(300*time.Second)
 	}
 }
 

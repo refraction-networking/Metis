@@ -15,7 +15,28 @@ func exp(x int) float64 {
 	return 100.0*math.Exp(-0.2*float64(x))
 }
 
+func executeCurl(line string, output *os.File){
+	cmd := exec.Command("curl", "-x", "127.0.0.1:8080", "-s","--connect-timeout", "5", "-m", "10", line)
+	err := cmd.Run()
+	if err != nil {
+		fmt.Println(line)
+		output.WriteString(line+": "+err.Error()+"\n")
+		output.Sync()
+	}
+}
+
+func executeAB(line string, output *os.File){
+	//Run Apache Benchmark through Metis, attempting to connect to the Alexa top N
+	cmd := exec.Command("ab", "-X", "127.0.0.1:8080", "-c", "100", "-n", "1000", "-k", line)
+	err := cmd.Run()
+	if err != nil {
+		fmt.Println(err)
+	}
+}
+
 func main() {
+	test := "ab"
+
 	file, err := os.Open("alexa_top.txt")
 	if err != nil {
 		fmt.Println(err)
@@ -36,18 +57,16 @@ func main() {
 		if !strings.Contains(line, "www.") {
 			line = "www."+line
 		}
-		copies := exp(x)
-		for i := 0; i < int(copies); i++ {
-			cmd := exec.Command("curl", "-s","--connect-timeout", "5", "-m", "10", line)
-			err := cmd.Run()
-			if err != nil {
-				fmt.Println(line)
-				output.WriteString(line+": "+err.Error()+"\n")
-				output.Sync()
+		if test == "curl" {
+			copies := exp(x)
+			for i := 0; i < int(copies); i++ {
+				executeCurl(line, output)
+				time.Sleep(2 * time.Second)
 			}
-			time.Sleep(2 * time.Second)
+			x++
+		} else if test == "ab" {
+			executeAB(line, output)
 		}
-		x++
 	}
 
 	if err := scanner.Err(); err != nil {

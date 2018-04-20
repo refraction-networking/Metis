@@ -76,7 +76,13 @@ func contains(slice []string, s string) bool {
 }
 
 func isBlocked(url *url.URL) (bool) {
-	return contains(blockedDomains, url.Hostname()) || contains(tempBlockedDomains, url.Hostname())
+	r := rand.Intn(100)
+	if r < 50 {
+		return false
+	} else {
+		return true
+	}
+	//return contains(blockedDomains, url.Hostname()) || contains(tempBlockedDomains, url.Hostname())
 }
 
 func remove(s []string, e string) []string {

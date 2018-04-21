@@ -25,19 +25,27 @@ func executeCurl(line string, output *os.File){
 	}
 }
 
-func executeAB(line string, output *os.File){
+func executeAB(line string) string {
 	//Run Apache Benchmark through Metis, attempting to connect to the Alexa top N
-	cmd := exec.Command("ab", "-X", "127.0.0.1:8080", "-c", "100", "-n", "1000", "-k", line)
-	err := cmd.Run()
+	output, err := exec.Command("ab", "-X", "127.0.0.1:8080", "-c", "1", "-n", "1", "http://"+line+"/").Output()
 	if err != nil {
-		fmt.Println(err)
+		fmt.Println("Error for line ", line, " is:", err)
+		return ""
 	}
+	out := string(output) 
+	//fmt.Println(out)
+	startIdx := strings.Index(out, "Time per request:")
+	endIdx := strings.Index(out, "[ms]")
+	avgReqTime := out[startIdx+17:endIdx]
+	avgReqTime = strings.Trim(avgReqTime, " 	")
+	fmt.Println("avgTime:", avgReqTime)
+	return avgReqTime
 }
 
 func main() {
 	test := "ab"
 
-	file, err := os.Open("alexa_top.txt")
+	file, err := os.Open("alexa_top_100.txt")
 	if err != nil {
 		fmt.Println(err)
 		os.Exit(1)
@@ -47,11 +55,18 @@ func main() {
 		fmt.Println(err)
 		os.Exit(1)
 	}
+	abResults, err := os.Create("ab_results.txt")
+	if err != nil {
+		fmt.Println(err)
+		os.Exit(1)
+	}
 	defer file.Close()
 	defer output.Close()
+	defer abResults.Close()
 
 	scanner := bufio.NewScanner(file)
 	x := 0
+	var rtts []string
 	for scanner.Scan() {
 		line := scanner.Text()
 		if !strings.Contains(line, "www.") {
@@ -65,10 +80,20 @@ func main() {
 			}
 			x++
 		} else if test == "ab" {
-			executeAB(line, output)
+			rtt := executeAB(line)
+			rtts = append(rtts, rtt)
 		}
 	}
-
+	
+	if test == "ab" {
+		for i := 0; i < len(rtts); i++ {
+			_, err := abResults.WriteString(rtts[i])
+			if err != nil {
+				fmt.Println(err)
+			}
+			abResults.Sync()
+		}
+	}
 	if err := scanner.Err(); err != nil {
 		log.Fatal(err)
 	}

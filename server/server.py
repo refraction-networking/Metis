@@ -9,6 +9,19 @@ import sqlite3
 
 import rappor_analysis as rappor
 
+numDoms = 100
+
+def getRandomDomains():
+    allDoms = open("alexa_random_100.txt", "r")
+    doms = []
+    for line in allDoms:
+        doms.append(line.rstrip())
+    allDoms.close()
+    if numDoms > len(allDoms):
+        print "ERROR: Can return a maximum of "+str(len(allDoms))+"from this file."
+        return doms
+    return doms[0:numDoms]
+
 class Sql():
     def __init__(self, dbName):
         self.conn = sqlite3.connect(dbName)
@@ -20,10 +33,12 @@ class Sql():
         self.conn.commit()
             
     def populateDummyData(self):
-        sql_command = """INSERT OR IGNORE INTO domains VALUES ("google.com");"""
-        self.crsr.execute(sql_command)
-        sql_command = """INSERT OR IGNORE INTO domains VALUES ("facebook.com");"""
-        self.crsr.execute(sql_command)
+        doms = getRandomDomains()
+        if not doms:
+            return
+        for d in doms:
+            sql_command = "INSERT OR IGNORE INTO domains VALUES (\""+d+"\");"
+            self.crsr.execute(sql_command)
         self.conn.commit()
         
     def addToDB(self, domain):
